@@ -36,6 +36,7 @@ export function initUI({ statusText, sceneDisplay }) {
       <input id="show-cone" type="checkbox" checked />
       <span>Show Cherenkov Cone</span>
     </label>
+    <p class="control-note">Cherenkov light is only drawn inside the Gd-loaded water volume.</p>
     <div class="button-row">
       <button id="show-pmt-hits" type="button" disabled>Show PMT Hits</button>
       <button id="reset-pmt-hits" type="button" disabled>Reset PMT Hits</button>

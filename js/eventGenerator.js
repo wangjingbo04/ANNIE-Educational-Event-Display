@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import { calculateRayCylinderIntersection } from "./cherenkov.js";
 import { detectorGeometry } from "./scene.js";
 
 const ENERGY_OPTIONS = [0.6, 0.8, 1.0, 1.5, 2.0];
@@ -39,9 +40,9 @@ export function generateEvent({ neutrinoEnergy, eventType, noiseLevel }) {
   const muonAngleDegrees = randomMuonAngle(neutrinoEnergy);
   const muonEnergy = randomMuonEnergy(neutrinoEnergy, eventType);
   const muonDirection = randomMuonDirection(muonAngleDegrees);
-  const waterExitDistance = distanceToTankBoundary(vertex, muonDirection);
+  const waterExit = calculateRayCylinderIntersection(vertex, muonDirection, detectorGeometry.tank);
   const muonRangeInWater = estimateMuonRangeInWater(muonEnergy);
-  const waterTrackLength = Math.min(waterExitDistance, muonRangeInWater);
+  const waterTrackLength = Math.min(waterExit.distance, muonRangeInWater);
   const waterEnd = vertex.clone().add(muonDirection.clone().multiplyScalar(waterTrackLength));
   const mrd = estimateMrdSegment(waterEnd, muonDirection, muonRangeInWater - waterTrackLength);
   const neutronMultiplicity = randomInteger(...NEUTRON_RANGES[eventType]);
@@ -61,6 +62,7 @@ export function generateEvent({ neutrinoEnergy, eventType, noiseLevel }) {
       muonEnergyGeV: round(muonEnergy, 3),
       muonDirection: vectorToArray(muonDirection),
       muonAngleDegrees: round(muonAngleDegrees, 1),
+      waterExitPointMeters: vectorToArray(waterEnd),
       muonTrackLengthWaterMeters: round(waterTrackLength, 2),
       projectedMrdTrackLengthMeters: round(mrd.length, 2),
       neutronMultiplicity,
@@ -93,9 +95,13 @@ export function generateEvent({ neutrinoEnergy, eventType, noiseLevel }) {
 function generateCosmicEvent({ noiseLevel }) {
   const start = new THREE.Vector3(randomBetween(-1.2, 1.2), getTopY() + 0.8, randomBetween(-1.25, 1.25));
   const direction = new THREE.Vector3(randomBetween(-0.25, 0.35), -1, randomBetween(-0.28, 0.28)).normalize();
-  const waterEntry = start.clone().add(direction.clone().multiplyScalar(0.82));
-  const length = randomBetween(2.7, 4.3);
-  const end = waterEntry.clone().add(direction.clone().multiplyScalar(length));
+  const entry = calculateRayCylinderIntersection(start, direction, detectorGeometry.tank);
+  const waterEntry = entry.point;
+  const insideStart = waterEntry.clone().add(direction.clone().multiplyScalar(0.001));
+  const exit = calculateRayCylinderIntersection(insideStart, direction, detectorGeometry.tank);
+  const length = Math.max(exit.distance + 0.001, 0);
+  const waterExit = waterEntry.clone().add(direction.clone().multiplyScalar(length));
+  const end = waterExit.clone().add(direction.clone().multiplyScalar(0.55));
 
   return {
     id: createEventId(),
@@ -112,6 +118,7 @@ function generateCosmicEvent({ noiseLevel }) {
       muonEnergyGeV: null,
       muonDirection: vectorToArray(direction),
       muonAngleDegrees: null,
+      waterExitPointMeters: vectorToArray(waterExit),
       muonTrackLengthWaterMeters: round(length, 2),
       projectedMrdTrackLengthMeters: 0,
       neutronMultiplicity: 0,
@@ -169,36 +176,6 @@ function randomMuonDirection(angleDegrees) {
 
 function estimateMuonRangeInWater(muonEnergyGeV) {
   return 4.6 * muonEnergyGeV;
-}
-
-function distanceToTankBoundary(vertex, direction) {
-  const center = new THREE.Vector3(...detectorGeometry.tank.centerMeters);
-  const radius = detectorGeometry.tank.radiusMeters;
-  const bottomY = getBottomY();
-  const topY = getTopY();
-  const distances = [];
-
-  const dxzA = direction.x ** 2 + direction.z ** 2;
-  const relX = vertex.x - center.x;
-  const relZ = vertex.z - center.z;
-  const dxzB = 2 * (relX * direction.x + relZ * direction.z);
-  const dxzC = relX ** 2 + relZ ** 2 - radius ** 2;
-  const discriminant = dxzB ** 2 - 4 * dxzA * dxzC;
-
-  if (dxzA > 0.0001 && discriminant >= 0) {
-    const root = (-dxzB + Math.sqrt(discriminant)) / (2 * dxzA);
-    if (root > 0) {
-      distances.push(root);
-    }
-  }
-
-  if (direction.y > 0.0001) {
-    distances.push((topY - vertex.y) / direction.y);
-  } else if (direction.y < -0.0001) {
-    distances.push((bottomY - vertex.y) / direction.y);
-  }
-
-  return Math.max(0, Math.min(...distances.filter((distance) => distance > 0)));
 }
 
 function estimateMrdSegment(waterEnd, direction, remainingRange) {

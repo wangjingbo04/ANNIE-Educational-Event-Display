@@ -1,7 +1,7 @@
 import * as THREE from "three";
 import { getCherenkovConeDimensions, getCherenkovSource, getCherenkovTrackLength, getMuonDirection } from "./cherenkov.js";
 
-export function createEventDisplay({ scene, lappdMeshes, mrdLayers, pmtMeshes }) {
+export function createEventDisplay({ detectorGeometry, scene, lappdMeshes, mrdLayers, pmtMeshes }) {
   const eventGroup = new THREE.Group();
   eventGroup.name = "event display";
   scene.add(eventGroup);
@@ -64,7 +64,7 @@ export function createEventDisplay({ scene, lappdMeshes, mrdLayers, pmtMeshes })
       return;
     }
 
-    addCherenkovCone(coneGroup, event);
+    addCherenkovCone(coneGroup, event, detectorGeometry.tank.radiusMeters * 0.95);
   }
 
   function showDetectorHits(response) {
@@ -155,7 +155,7 @@ function addDashedLine(group, startArray, endArray, color) {
   }
 }
 
-function addCherenkovCone(group, event) {
+function addCherenkovCone(group, event, maxRadius) {
   const source = getCherenkovSource(event);
   const direction = getMuonDirection(event);
   const trackLength = getCherenkovTrackLength(event);
@@ -164,7 +164,7 @@ function addCherenkovCone(group, event) {
     return;
   }
 
-  const { length, radius } = getCherenkovConeDimensions(trackLength);
+  const { length, radius } = getCherenkovConeDimensions(trackLength, maxRadius);
   const geometry = new THREE.ConeGeometry(radius, length, 72, 1, true);
   const material = new THREE.MeshStandardMaterial({
     color: 0x31a8ff,

@@ -5,6 +5,7 @@ import {
   LIGHT_SPEED_WATER_METERS_PER_NS,
   getCherenkovAngleToPoint,
   getCherenkovSource,
+  getCherenkovTrackLength,
   getMuonDirection,
   isOnCherenkovCone,
 } from "./cherenkov.js";
@@ -15,13 +16,14 @@ const TIMING_SMEAR_NS = 0.45;
 export function simulateDetectorResponse(event) {
   const source = getCherenkovSource(event);
   const direction = getMuonDirection(event);
+  const waterTrackLength = getCherenkovTrackLength(event);
 
-  if (!source || !direction) {
+  if (!source || !direction || waterTrackLength <= 0) {
     return createEmptyResponse();
   }
 
-  const pmtResponses = simulatePmtResponses(event, source, direction);
-  const lappdResponses = simulateLappdResponses(source, direction);
+  const pmtResponses = simulatePmtResponses(event, source, direction, waterTrackLength);
+  const lappdResponses = simulateLappdResponses(source, direction, waterTrackLength);
   const pmtHits = pmtResponses.filter((pmt) => pmt.hit);
   const lappdHits = lappdResponses.filter((lappd) => lappd.hit);
   const totalCharge = pmtHits.reduce((sum, hit) => sum + hit.hitCharge, 0);
@@ -43,18 +45,20 @@ export function simulateDetectorResponse(event) {
   };
 }
 
-function simulatePmtResponses(event, source, direction) {
+function simulatePmtResponses(event, source, direction, waterTrackLength) {
   return detectorGeometry.pmtPositions.map((pmt) => {
     const position = pmt.position.clone();
+    const projection = position.clone().sub(source).dot(direction);
     const angle = getCherenkovAngleToPoint(source, direction, position);
     const distance = source.distanceTo(position);
-    const hit = isOnCherenkovCone(angle);
+    const hit = projection >= 0 && projection <= waterTrackLength && isOnCherenkovCone(angle);
 
     return {
       id: pmt.id,
       hit,
       positionMeters: position.toArray(),
       angleDegrees: round(angle, 2),
+      trackProjectionMeters: round(projection, 3),
       distanceMeters: round(distance, 3),
       hitCharge: hit ? round(calculateCharge(event, distance, angle), 2) : 0,
       hitTime: hit ? round(calculateHitTime(distance), 2) : null,
@@ -62,15 +66,17 @@ function simulatePmtResponses(event, source, direction) {
   });
 }
 
-function simulateLappdResponses(source, direction) {
+function simulateLappdResponses(source, direction, waterTrackLength) {
   return detectorGeometry.lappdPositions.map((lappd) => {
     const center = lappd.position.clone();
     const normal = lappd.normal.clone().normalize();
+    const projection = center.clone().sub(source).dot(direction);
     const angle = getCherenkovAngleToPoint(source, direction, center);
     const distance = source.distanceTo(center);
     const panelAngularHalfWidth = THREE.MathUtils.radToDeg(Math.atan((lappd.widthMeters * 0.75) / Math.max(distance, 0.1)));
     const facesSource = center.clone().sub(source).normalize().dot(normal) < -0.2;
-    const hit = Math.abs(angle - CHERENKOV_ANGLE_DEGREES) < CHERENKOV_CONE_WIDTH_DEGREES + panelAngularHalfWidth
+    const hit = projection >= 0 && projection <= waterTrackLength
+      && Math.abs(angle - CHERENKOV_ANGLE_DEGREES) < CHERENKOV_CONE_WIDTH_DEGREES + panelAngularHalfWidth
       && facesSource;
 
     return {

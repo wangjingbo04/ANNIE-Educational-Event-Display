@@ -9,12 +9,12 @@ const DETECTOR = {
     center: new THREE.Vector3(0, 1.85, 0),
   },
   pmt: {
-    radius: 0.105,
+    radius: 0.1016,
   },
   lappd: {
-    width: 0.42,
-    height: 0.42,
-    depth: 0.045,
+    width: 0.2032,
+    height: 0.2032,
+    depth: 0.022,
   },
   mrd: {
     layerCount: 7,
@@ -221,8 +221,8 @@ function addPmts(group, pmtMeshes) {
     top: makePmtMaterials(0xff4f4f, 0xffb0a0, 0x601818),
     bottom: makePmtMaterials(0x1148d7, 0xa9d4ff, 0x07184d),
   };
-  const bodyGeometry = new THREE.CylinderGeometry(DETECTOR.pmt.radius, DETECTOR.pmt.radius * 0.72, 0.11, 20);
-  const faceGeometry = new THREE.CircleGeometry(DETECTOR.pmt.radius * 0.9, 20);
+  const domeGeometry = createHemisphereGeometry(DETECTOR.pmt.radius, 28, 12);
+  const rimGeometry = new THREE.TorusGeometry(DETECTOR.pmt.radius * 0.96, 0.009, 10, 32);
 
   for (const pmt of detectorGeometry.pmtPositions) {
     const materialKey = pmt.surface === "top" ? "top" : pmt.surface === "bottom" ? "bottom" : "wall";
@@ -230,13 +230,11 @@ function addPmts(group, pmtMeshes) {
     pmtGroup.position.copy(pmt.position);
     pmtGroup.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), pmt.normal);
 
-    const body = new THREE.Mesh(bodyGeometry, materials[materialKey].body.clone());
-    body.rotation.x = Math.PI / 2;
-    pmtGroup.add(body);
+    const dome = new THREE.Mesh(domeGeometry, materials[materialKey].face.clone());
+    pmtGroup.add(dome);
 
-    const face = new THREE.Mesh(faceGeometry, materials[materialKey].face.clone());
-    face.position.z = 0.058;
-    pmtGroup.add(face);
+    const rim = new THREE.Mesh(rimGeometry, materials[materialKey].body.clone());
+    pmtGroup.add(rim);
 
     pmtGroup.userData = {
       id: pmt.id,
@@ -263,6 +261,46 @@ function makePmtMaterials(bodyColor, faceColor, emissiveColor) {
       roughness: 0.16,
     }),
   };
+}
+
+function createHemisphereGeometry(radius, radialSegments, heightSegments) {
+  const positions = [];
+  const normals = [];
+  const indices = [];
+
+  for (let y = 0; y <= heightSegments; y += 1) {
+    const theta = (y / heightSegments) * (Math.PI / 2);
+    const ringRadius = Math.sin(theta) * radius;
+    const z = Math.cos(theta) * radius;
+
+    for (let x = 0; x <= radialSegments; x += 1) {
+      const phi = (x / radialSegments) * Math.PI * 2;
+      const px = Math.cos(phi) * ringRadius;
+      const py = Math.sin(phi) * ringRadius;
+      positions.push(px, py, z);
+
+      const normal = new THREE.Vector3(px, py, z).normalize();
+      normals.push(normal.x, normal.y, normal.z);
+    }
+  }
+
+  for (let y = 0; y < heightSegments; y += 1) {
+    for (let x = 0; x < radialSegments; x += 1) {
+      const a = y * (radialSegments + 1) + x;
+      const b = a + radialSegments + 1;
+      const c = b + 1;
+      const d = a + 1;
+      indices.push(a, b, d);
+      indices.push(b, c, d);
+    }
+  }
+
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+  geometry.setAttribute("normal", new THREE.Float32BufferAttribute(normals, 3));
+  geometry.setIndex(indices);
+
+  return geometry;
 }
 
 function addLappds(group, lappdMeshes) {
