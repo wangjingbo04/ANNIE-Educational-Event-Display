@@ -1,0 +1,146 @@
+:root {
+  color-scheme: dark;
+  --bg: #101316;
+  --panel: #191f24;
+  --panel-strong: #20282f;
+  --border: #34404a;
+  --text: #eef4f7;
+  --muted: #9fb0bb;
+  --accent: #61d6b6;
+  --warning: #f3c96b;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  min-width: 320px;
+  overflow: hidden;
+  background: var(--bg);
+  color: var(--text);
+  font-family: Arial, Helvetica, sans-serif;
+}
+
+.app-shell {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  width: 100vw;
+  height: 100vh;
+}
+
+.app-header {
+  display: flex;
+  align-items: center;
+  min-height: 56px;
+  padding: 12px 18px;
+  border-bottom: 1px solid var(--border);
+  background: #14191d;
+}
+
+.app-header h1 {
+  margin: 0;
+  color: var(--text);
+  font-size: 1.1rem;
+  font-weight: 700;
+  letter-spacing: 0;
+}
+
+.workspace {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(260px, 340px);
+  min-height: 0;
+}
+
+.detector-panel {
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+  border-right: 1px solid var(--border);
+  background: #0c0f12;
+}
+
+#scene-container {
+  width: 100%;
+  height: 100%;
+}
+
+#scene-container canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.control-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+  padding: 18px;
+  background: var(--panel);
+}
+
+.control-panel h2 {
+  margin: 0;
+  font-size: 0.95rem;
+  color: var(--text);
+}
+
+.placeholder-block {
+  display: grid;
+  min-height: 140px;
+  place-items: center;
+  border: 1px dashed #55626c;
+  border-radius: 8px;
+  background: var(--panel-strong);
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.status-panel {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 48px;
+  padding: 10px 18px;
+  border-top: 1px solid var(--border);
+  background: #151a1f;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.status-panel strong {
+  color: var(--accent);
+}
+
+@media (max-width: 760px) {
+  body {
+    overflow: auto;
+  }
+
+  .app-shell {
+    min-height: 100vh;
+    height: auto;
+  }
+
+  .workspace {
+    grid-template-columns: 1fr;
+    grid-template-rows: minmax(360px, 58vh) auto;
+  }
+
+  .detector-panel {
+    border-right: 0;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .control-panel {
+    min-height: 220px;
+  }
+}

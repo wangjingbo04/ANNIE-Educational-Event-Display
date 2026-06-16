@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ANNIE Summer Camp Simulator</title>
+    <link rel="stylesheet" href="css/style.css" />
+    <script type="importmap">
+      {
+        "imports": {
+          "three": "https://unpkg.com/three@0.165.0/build/three.module.js",
+          "three/addons/": "https://unpkg.com/three@0.165.0/examples/jsm/"
+        }
+      }
+    </script>
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="app-header">
+        <h1>ANNIE Summer Camp Simulator</h1>
+      </header>
+
+      <main class="workspace">
+        <section class="detector-panel" aria-label="3D detector view">
+          <div id="scene-container"></div>
+        </section>
+
+        <aside class="control-panel" aria-label="Control panel">
+          <h2>Control Panel</h2>
+          <div class="placeholder-block">
+            <span>Controls placeholder</span>
+          </div>
+        </aside>
+      </main>
+
+      <footer class="status-panel" aria-label="Status panel">
+        <strong>Status</strong>
+        <span id="status-text">Scene ready</span>
+      </footer>
+    </div>
+
+    <script type="module" src="js/main.js"></script>
+  </body>
+</html>
