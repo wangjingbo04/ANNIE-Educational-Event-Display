@@ -7,8 +7,16 @@ export function initUI({ statusText, sceneDisplay }) {
   const truthRoot = document.querySelector("#truth-readout");
   const options = getEventOptions();
   let currentEvent = null;
+  let currentMode = "teacher";
 
   controlsRoot.innerHTML = `
+    <label class="field">
+      <span>Display mode</span>
+      <select id="display-mode">
+        <option value="teacher">Teacher Mode</option>
+        <option value="student">Student Mode</option>
+      </select>
+    </label>
     <label class="field">
       <span>True neutrino energy</span>
       <select id="neutrino-energy">
@@ -36,7 +44,7 @@ export function initUI({ statusText, sceneDisplay }) {
       <input id="show-cone" type="checkbox" checked />
       <span>Show Cherenkov Cone</span>
     </label>
-    <p class="control-note">Cherenkov light is contained in the water tank. The MRD detects the muon track, not light.</p>
+    <p class="control-note">ANNIE MRD: 11 alternating scintillator layers, 6 horizontal and 5 vertical, interleaved with iron absorber plates. It registers muon track hits, not Cherenkov light.</p>
     <div class="button-row">
       <button id="show-pmt-hits" type="button" disabled>Show PMT Hits</button>
       <button id="reset-pmt-hits" type="button" disabled>Reset PMT Hits</button>
@@ -49,6 +57,7 @@ export function initUI({ statusText, sceneDisplay }) {
   const runButton = controlsRoot.querySelector("#run-event");
   const resetButton = controlsRoot.querySelector("#reset-event");
   const revealButton = controlsRoot.querySelector("#reveal-truth");
+  const modeSelect = controlsRoot.querySelector("#display-mode");
   const coneToggle = controlsRoot.querySelector("#show-cone");
   const showPmtHitsButton = controlsRoot.querySelector("#show-pmt-hits");
   const resetPmtHitsButton = controlsRoot.querySelector("#reset-pmt-hits");
@@ -62,14 +71,15 @@ export function initUI({ statusText, sceneDisplay }) {
       noiseLevel: noiseSelect.value,
     });
     currentEvent.response = simulateDetectorResponse(currentEvent);
-    sceneDisplay.showEvent(currentEvent, { showCone: coneToggle.checked });
-    renderObservables(currentEvent);
+    currentMode = modeSelect.value;
     truthRoot.hidden = true;
     truthRoot.innerHTML = "";
     revealButton.disabled = false;
-    showPmtHitsButton.disabled = false;
-    resetPmtHitsButton.disabled = false;
-    statusText.textContent = "Event generated: truth hidden";
+    applyDisplayMode();
+    renderObservables(currentEvent, currentMode);
+    statusText.textContent = currentMode === "teacher"
+      ? "Event generated: truth track and cone shown"
+      : "Event generated: student detector response shown";
   });
 
   resetButton.addEventListener("click", () => {
@@ -78,6 +88,7 @@ export function initUI({ statusText, sceneDisplay }) {
     revealButton.disabled = true;
     showPmtHitsButton.disabled = true;
     resetPmtHitsButton.disabled = true;
+    coneToggle.disabled = currentMode !== "teacher";
     truthRoot.hidden = true;
     truthRoot.innerHTML = "";
     renderNoEvent();
@@ -94,11 +105,26 @@ export function initUI({ statusText, sceneDisplay }) {
   });
 
   coneToggle.addEventListener("change", () => {
-    if (!currentEvent) {
+    if (!currentEvent || currentMode !== "teacher") {
       return;
     }
     sceneDisplay.setCherenkovConeVisible(currentEvent, coneToggle.checked);
     statusText.textContent = coneToggle.checked ? "Cherenkov cone shown" : "Cherenkov cone hidden";
+  });
+
+  modeSelect.addEventListener("change", () => {
+    currentMode = modeSelect.value;
+    if (!currentEvent) {
+      coneToggle.disabled = currentMode !== "teacher";
+      statusText.textContent = currentMode === "teacher" ? "Teacher Mode selected" : "Student Mode selected";
+      return;
+    }
+
+    applyDisplayMode();
+    renderObservables(currentEvent, currentMode);
+    statusText.textContent = currentMode === "teacher"
+      ? "Teacher Mode: truth track and cone shown"
+      : "Student Mode: PMT and MRD hits shown";
   });
 
   showPmtHitsButton.addEventListener("click", () => {
@@ -113,6 +139,34 @@ export function initUI({ statusText, sceneDisplay }) {
     sceneDisplay.resetDetectorHits();
     statusText.textContent = "PMT hit display reset";
   });
+
+  function applyDisplayMode() {
+    if (!currentEvent) {
+      return;
+    }
+
+    if (currentMode === "student") {
+      sceneDisplay.showEvent(currentEvent, {
+        showCone: false,
+        showTruthTracks: false,
+        showVertex: false,
+      });
+      sceneDisplay.showDetectorHits(currentEvent.response);
+      coneToggle.disabled = true;
+      showPmtHitsButton.disabled = true;
+      resetPmtHitsButton.disabled = false;
+      return;
+    }
+
+    sceneDisplay.showEvent(currentEvent, {
+      showCone: coneToggle.checked,
+      showTruthTracks: true,
+      showVertex: true,
+    });
+    coneToggle.disabled = false;
+    showPmtHitsButton.disabled = false;
+    resetPmtHitsButton.disabled = false;
+  }
 }
 
 function renderNoEvent() {
@@ -122,8 +176,9 @@ function renderNoEvent() {
   `;
 }
 
-function renderObservables(event) {
+function renderObservables(event, mode = "teacher") {
   const response = event.response;
+  const isStudentMode = mode === "student";
   document.querySelector("#student-observables").innerHTML = `
     <h3>Event Summary</h3>
     <dl>
@@ -134,15 +189,19 @@ function renderObservables(event) {
       <dt>Total PMT charge</dt>
       <dd>${response.totals.pmtCharge.toFixed(1)}</dd>
       <dt>Muon angle</dt>
-      <dd>${event.truth.muonAngleDegrees === null ? "Not shown" : `${event.truth.muonAngleDegrees.toFixed(1)} deg`}</dd>
+      <dd>${isStudentMode || event.truth.muonAngleDegrees === null ? "Hidden" : `${event.truth.muonAngleDegrees.toFixed(1)} deg`}</dd>
       <dt>Muon track length</dt>
-      <dd>${event.truth.muonTrackLengthWaterMeters.toFixed(2)} m</dd>
+      <dd>${isStudentMode ? "Hidden" : `${event.truth.muonTrackLengthWaterMeters.toFixed(2)} m`}</dd>
       <dt>Water path length</dt>
       <dd>${event.observables.roughWaterPathLengthMeters.toFixed(1)} m</dd>
       <dt>Visible topology</dt>
       <dd>${event.observables.visibleTopology}</dd>
       <dt>Visible MRD layers crossed</dt>
       <dd>${event.observables.visibleMrdLayersCrossed}</dd>
+      <dt>Estimated MRD track length</dt>
+      <dd>${event.observables.estimatedMrdTrackLengthMeters.toFixed(2)} m</dd>
+      <dt>MRD status</dt>
+      <dd>${event.observables.mrdStopStatus}</dd>
       <dt>Noise level</dt>
       <dd>${capitalize(event.observables.noiseLevel)}</dd>
     </dl>
@@ -169,6 +228,8 @@ function renderTruth(event) {
       <dd>${truth.muonTrackLengthWaterMeters.toFixed(2)} m</dd>
       <dt>True MRD track length</dt>
       <dd>${truth.projectedMrdTrackLengthMeters.toFixed(2)} m</dd>
+      <dt>MRD stop status</dt>
+      <dd>${truth.mrdStopped ? "Stopped in MRD" : truth.projectedMrdTrackLengthMeters > 0 ? "Exited MRD" : "Did not reach MRD"}</dd>
     </dl>
   `;
 }

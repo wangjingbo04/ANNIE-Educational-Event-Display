@@ -63,8 +63,9 @@ export function generateEvent({ neutrinoEnergy, eventType, noiseLevel }) {
       muonDirection: vectorToArray(muonDirection),
       muonAngleDegrees: round(muonAngleDegrees, 1),
       waterExitPointMeters: vectorToArray(waterExitPoint),
-      muonTrackLengthWaterMeters: round(waterTrackLength, 2),
-      projectedMrdTrackLengthMeters: round(mrd.length, 2),
+      muonTrackLengthWaterMeters: round(waterTrackLength, 4),
+      projectedMrdTrackLengthMeters: round(mrd.length, 4),
+      mrdStopped: mrd.stopped,
       neutronMultiplicity,
     },
     observables: {
@@ -72,11 +73,13 @@ export function generateEvent({ neutrinoEnergy, eventType, noiseLevel }) {
       roughWaterPathLengthMeters: round(jitter(waterTrackLength, noiseLevel), 1),
       crossedMrdLayers: mrd.crossedLayers,
       visibleMrdLayersCrossed: mrd.crossedLayers.length,
+      estimatedMrdTrackLengthMeters: round(mrd.length, 2),
+      mrdStopStatus: mrd.stopped ? "Stopped in MRD" : mrd.length > 0 ? "Exited MRD" : "Did not reach MRD",
       noiseLevel,
     },
     display: {
       incomingNeutrino: {
-        start: vectorToArray(new THREE.Vector3(-2.35, vertex.y, vertex.z)),
+        start: vectorToArray(new THREE.Vector3(vertex.x, vertex.y, -2.35)),
         end: vectorToArray(vertex),
       },
       vertex: vectorToArray(vertex),
@@ -119,8 +122,9 @@ function generateCosmicEvent({ noiseLevel }) {
       muonDirection: vectorToArray(direction),
       muonAngleDegrees: null,
       waterExitPointMeters: vectorToArray(waterExit),
-      muonTrackLengthWaterMeters: round(length, 2),
+      muonTrackLengthWaterMeters: round(length, 4),
       projectedMrdTrackLengthMeters: 0,
+      mrdStopped: false,
       neutronMultiplicity: 0,
       cosmicEntryMeters: vectorToArray(waterEntry),
     },
@@ -129,6 +133,8 @@ function generateCosmicEvent({ noiseLevel }) {
       roughWaterPathLengthMeters: round(jitter(length, noiseLevel), 1),
       crossedMrdLayers: [],
       visibleMrdLayersCrossed: 0,
+      estimatedMrdTrackLengthMeters: 0,
+      mrdStopStatus: "Did not reach MRD",
       noiseLevel,
     },
     display: {
@@ -168,9 +174,9 @@ function randomMuonDirection(angleDegrees) {
   const theta = THREE.MathUtils.degToRad(angleDegrees);
   const phi = randomBetween(0, Math.PI * 2);
   return new THREE.Vector3(
-    Math.cos(theta),
     Math.sin(theta) * Math.cos(phi),
     Math.sin(theta) * Math.sin(phi),
+    Math.cos(theta),
   ).normalize();
 }
 
@@ -179,40 +185,74 @@ function estimateMuonTrackLength(muonEnergyGeV) {
 }
 
 function estimateMrdSegment(waterExitPoint, direction, remainingRange) {
-  if (direction.x <= 0.05 || remainingRange <= 0) {
-    return { length: 0, crossedLayers: [], start: null, end: null };
+  if (direction.z <= 0.05 || remainingRange <= 0) {
+    return { length: 0, crossedLayers: [], start: null, end: null, stopped: false };
   }
 
-  const mrdStartX = detectorGeometry.mrd.startXMeters;
-  const distanceToMrd = (mrdStartX - waterExitPoint.x) / direction.x;
+  const mrdStartZ = detectorGeometry.mrd.startZMeters;
+  const distanceToMrd = (mrdStartZ - waterExitPoint.z) / direction.z;
   if (distanceToMrd < 0 || distanceToMrd > remainingRange + 0.25) {
-    return { length: 0, crossedLayers: [], start: null, end: null };
+    return { length: 0, crossedLayers: [], start: null, end: null, stopped: false };
   }
 
   const start = waterExitPoint.clone().add(direction.clone().multiplyScalar(Math.max(distanceToMrd, 0)));
-  const mrdDepth = detectorGeometry.mrd.layerSpacingMeters * (detectorGeometry.mrd.layerCount - 1)
-    + detectorGeometry.mrd.layerThicknessMeters;
-  const maxLength = Math.min(remainingRange - Math.max(distanceToMrd, 0), mrdDepth / Math.max(direction.x, 0.05));
+  const maxMrdPath = detectorGeometry.mrd.totalDepthMeters / Math.max(direction.z, 0.05);
+  const availableInMrd = remainingRange - Math.max(distanceToMrd, 0);
+  const maxLength = Math.min(availableInMrd, maxMrdPath);
   const length = Math.max(0, maxLength);
   const end = start.clone().add(direction.clone().multiplyScalar(length));
-  const crossedLayers = getCrossedMrdLayers(start.x, end.x);
+  const crossedLayers = getCrossedMrdLayers(start, end, direction);
+  const stopped = availableInMrd < maxMrdPath;
 
-  return { length, crossedLayers, start, end };
+  return { length, crossedLayers, start, end, stopped };
 }
 
-function getCrossedMrdLayers(startX, endX) {
-  const minX = Math.min(startX, endX);
-  const maxX = Math.max(startX, endX);
+function getCrossedMrdLayers(start, end, direction) {
+  const minZ = Math.min(start.z, end.z);
+  const maxZ = Math.max(start.z, end.z);
   const layers = [];
 
   for (let i = 0; i < detectorGeometry.mrd.layerCount; i += 1) {
-    const layerX = detectorGeometry.mrd.startXMeters + i * detectorGeometry.mrd.layerSpacingMeters;
-    if (layerX >= minX && layerX <= maxX) {
-      layers.push(i);
+    const layerZ = detectorGeometry.mrd.startZMeters
+      + i * detectorGeometry.mrd.layerSpacingMeters
+      + detectorGeometry.mrd.absorberThicknessMeters / 2
+      + detectorGeometry.mrd.scintillatorThicknessMeters / 2
+      + 0.018;
+    if (layerZ < minZ || layerZ > maxZ) {
+      continue;
     }
+
+    const distanceToLayer = (layerZ - start.z) / direction.z;
+    const hitPoint = start.clone().add(direction.clone().multiplyScalar(distanceToLayer));
+    if (!isInsideMrdFace(hitPoint)) {
+      continue;
+    }
+
+    const orientation = i % 2 === 0 ? "horizontal" : "vertical";
+    const paddleIndex = orientation === "horizontal"
+      ? coordinateToPaddleIndex(hitPoint.y, detectorGeometry.tank.centerMeters[1], detectorGeometry.mrd.heightMeters)
+      : coordinateToPaddleIndex(hitPoint.x, 0, detectorGeometry.mrd.widthXMeters);
+
+    layers.push({
+      layerIndex: i,
+      paddleIndex,
+      orientation,
+      hitPointMeters: vectorToArray(hitPoint),
+    });
   }
 
   return layers;
+}
+
+function isInsideMrdFace(point) {
+  return Math.abs(point.x) <= detectorGeometry.mrd.widthXMeters / 2
+    && Math.abs(point.y - detectorGeometry.tank.centerMeters[1]) <= detectorGeometry.mrd.heightMeters / 2;
+}
+
+function coordinateToPaddleIndex(value, center, span) {
+  const normalized = (value - (center - span / 2)) / span;
+  const index = Math.floor(normalized * detectorGeometry.mrd.paddleCountPerLayer);
+  return Math.min(detectorGeometry.mrd.paddleCountPerLayer - 1, Math.max(0, index));
 }
 
 function jitter(value, noiseLevel) {
@@ -229,7 +269,7 @@ function getBottomY() {
 }
 
 function vectorToArray(vector) {
-  return [round(vector.x, 3), round(vector.y, 3), round(vector.z, 3)];
+  return [round(vector.x, 5), round(vector.y, 5), round(vector.z, 5)];
 }
 
 function randomBetween(min, max) {

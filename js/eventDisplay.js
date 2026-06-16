@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { getCherenkovConeDimensions, getCherenkovSource, getCherenkovTrackLength, getMuonDirection } from "./cherenkov.js";
+import { CHERENKOV_ANGLE_DEGREES, getCherenkovSource, getCherenkovTrackLength, getMuonDirection } from "./cherenkov.js";
 
 export function createEventDisplay({ detectorGeometry, scene, mrdLayers, pmtMeshes }) {
   const eventGroup = new THREE.Group();
@@ -14,29 +14,29 @@ export function createEventDisplay({ detectorGeometry, scene, mrdLayers, pmtMesh
   hitMarkerGroup.name = "detector hit display";
   scene.add(hitMarkerGroup);
 
-  const baseMrdColors = mrdLayers.map((layer) => layer.material.color.getHex());
+  const mrdBaseStates = captureMrdStates(mrdLayers);
   const pmtBaseStates = captureBaseStates(pmtMeshes);
 
-  function showEvent(event, { showCone = true } = {}) {
+  function showEvent(event, { showCone = true, showTruthTracks = true, showVertex = true } = {}) {
     clearEvent();
 
-    if (event.display.incomingNeutrino) {
+    if (showTruthTracks && event.display.incomingNeutrino) {
       addDashedLine(eventGroup, event.display.incomingNeutrino.start, event.display.incomingNeutrino.end, 0xf3c96b);
     }
 
-    if (event.display.vertex) {
+    if (showVertex && event.display.vertex) {
       addVertex(eventGroup, event.display.vertex);
     }
 
-    if (event.display.muonTrack) {
-      addSolidLine(eventGroup, event.display.muonTrack.start, event.display.muonTrack.end, 0xff3b1f, 0.025);
+    if (showTruthTracks && event.display.muonTrack) {
+      addSolidLine(eventGroup, event.display.muonTrack.start, event.display.muonTrack.end, 0xff8a00, 0.045);
     }
 
-    if (event.display.mrdTrack) {
-      addSolidLine(eventGroup, event.display.mrdTrack.start, event.display.mrdTrack.end, 0xff8f2a, 0.035);
+    if (showTruthTracks && event.display.mrdTrack) {
+      addSolidLine(eventGroup, event.display.mrdTrack.start, event.display.mrdTrack.end, 0xff9f1a, 0.055);
     }
 
-    if (event.display.cosmicTrack) {
+    if (showTruthTracks && event.display.cosmicTrack) {
       addSolidLine(eventGroup, event.display.cosmicTrack.start, event.display.cosmicTrack.end, 0xc77dff, 0.028);
     }
 
@@ -51,10 +51,7 @@ export function createEventDisplay({ detectorGeometry, scene, mrdLayers, pmtMesh
     eventGroup.clear();
     coneGroup.clear();
     resetDetectorHits();
-    mrdLayers.forEach((layer, index) => {
-      layer.material.color.setHex(baseMrdColors[index]);
-      layer.material.emissive?.setHex(0x000000);
-    });
+    restoreMrdStates(mrdLayers, mrdBaseStates);
   }
 
   function setCherenkovConeVisible(event, visible) {
@@ -63,7 +60,7 @@ export function createEventDisplay({ detectorGeometry, scene, mrdLayers, pmtMesh
       return;
     }
 
-    addCherenkovCone(coneGroup, event, detectorGeometry.tank.radiusMeters * 0.95);
+    addCherenkovCone(coneGroup, event, detectorGeometry.tank);
   }
 
   function showDetectorHits(response) {
@@ -142,7 +139,7 @@ function addDashedLine(group, startArray, endArray, color) {
   }
 }
 
-function addCherenkovCone(group, event, maxRadius) {
+function addCherenkovCone(group, event, tank) {
   const source = getCherenkovSource(event);
   const direction = getMuonDirection(event);
   const trackLength = getCherenkovTrackLength(event);
@@ -151,8 +148,7 @@ function addCherenkovCone(group, event, maxRadius) {
     return;
   }
 
-  const { length, radius } = getCherenkovConeDimensions(trackLength, maxRadius);
-  const geometry = new THREE.ConeGeometry(radius, length, 72, 1, true);
+  const geometry = createContainedCherenkovConeGeometry(source, direction, trackLength, tank);
   const material = new THREE.MeshStandardMaterial({
     color: 0xffe45c,
     emissive: 0xffb000,
@@ -163,19 +159,131 @@ function addCherenkovCone(group, event, maxRadius) {
     depthWrite: false,
   });
   const cone = new THREE.Mesh(geometry, material);
-  cone.position.copy(source).add(direction.clone().multiplyScalar(length / 2));
-  cone.quaternion.setFromUnitVectors(new THREE.Vector3(0, -1, 0), direction);
   group.add(cone);
 }
 
-function lightMrdLayers(mrdLayers, crossedLayers) {
-  for (const layerIndex of crossedLayers) {
-    const layer = mrdLayers[layerIndex];
-    if (layer) {
-      layer.material.color.setHex(0xffb347);
-      layer.material.emissive?.setHex(0x7a3300);
+function createContainedCherenkovConeGeometry(source, axis, length, tank) {
+  const radialSegments = 72;
+  const lengthSegments = 36;
+  const theta = THREE.MathUtils.degToRad(CHERENKOV_ANGLE_DEGREES);
+  const [u, v] = makePerpendicularBasis(axis);
+  const positions = [];
+  const indices = [];
+
+  for (let i = 0; i <= lengthSegments; i += 1) {
+    const fraction = i / lengthSegments;
+    const axisDistance = length * fraction;
+    const axisPoint = source.clone().add(axis.clone().multiplyScalar(axisDistance));
+    const idealRadius = Math.tan(theta) * axisDistance;
+    const exitTaper = Math.max(0, 1 - fraction ** 6);
+
+    for (let j = 0; j < radialSegments; j += 1) {
+      const phi = (j / radialSegments) * Math.PI * 2;
+      const radialDirection = u.clone().multiplyScalar(Math.cos(phi)).add(v.clone().multiplyScalar(Math.sin(phi))).normalize();
+      const containedRadius = findContainedConeRadius(axisPoint, radialDirection, idealRadius * exitTaper, tank);
+      const point = axisPoint.clone().add(radialDirection.multiplyScalar(containedRadius));
+      positions.push(point.x, point.y, point.z);
     }
   }
+
+  for (let i = 0; i < lengthSegments; i += 1) {
+    for (let j = 0; j < radialSegments; j += 1) {
+      const a = i * radialSegments + j;
+      const b = i * radialSegments + ((j + 1) % radialSegments);
+      const c = (i + 1) * radialSegments + j;
+      const d = (i + 1) * radialSegments + ((j + 1) % radialSegments);
+      indices.push(a, c, b);
+      indices.push(b, c, d);
+    }
+  }
+
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+  geometry.setIndex(indices);
+  geometry.computeVertexNormals();
+
+  return geometry;
+}
+
+function makePerpendicularBasis(axis) {
+  const reference = Math.abs(axis.y) < 0.92 ? new THREE.Vector3(0, 1, 0) : new THREE.Vector3(0, 0, 1);
+  const u = new THREE.Vector3().crossVectors(axis, reference).normalize();
+  const v = new THREE.Vector3().crossVectors(axis, u).normalize();
+
+  return [u, v];
+}
+
+function findContainedConeRadius(origin, radialDirection, desiredRadius, tank) {
+  if (desiredRadius <= 0) {
+    return 0;
+  }
+
+  const desiredPoint = origin.clone().add(radialDirection.clone().multiplyScalar(desiredRadius));
+  if (isPointInsideTank(desiredPoint, tank)) {
+    return desiredRadius;
+  }
+
+  let low = 0;
+  let high = desiredRadius;
+  for (let i = 0; i < 16; i += 1) {
+    const mid = (low + high) / 2;
+    const point = origin.clone().add(radialDirection.clone().multiplyScalar(mid));
+    if (isPointInsideTank(point, tank)) {
+      low = mid;
+    } else {
+      high = mid;
+    }
+  }
+
+  return low;
+}
+
+function isPointInsideTank(point, tank) {
+  const center = new THREE.Vector3().fromArray(tank.centerMeters);
+  const halfHeight = tank.heightMeters / 2;
+  const radialDistanceSquared = (point.x - center.x) ** 2 + (point.z - center.z) ** 2;
+
+  return radialDistanceSquared <= tank.radiusMeters ** 2 + 0.000001
+    && point.y >= center.y - halfHeight - 0.000001
+    && point.y <= center.y + halfHeight + 0.000001;
+}
+
+function lightMrdLayers(mrdLayers, crossedLayers) {
+  for (const hit of crossedLayers) {
+    const layer = mrdLayers[hit.layerIndex];
+    const paddle = layer?.paddles?.[hit.paddleIndex];
+    if (paddle) {
+      paddle.material.color.setHex(0xffb347);
+      paddle.material.emissive?.setHex(0xff7a00);
+      paddle.material.emissiveIntensity = 0.9;
+    }
+  }
+}
+
+function captureMrdStates(mrdLayers) {
+  return mrdLayers.map((layer) => ({
+    paddles: layer.paddles.map((paddle) => ({
+      color: paddle.material.color.getHex(),
+      emissive: paddle.material.emissive?.getHex(),
+      emissiveIntensity: paddle.material.emissiveIntensity ?? 0,
+    })),
+  }));
+}
+
+function restoreMrdStates(mrdLayers, baseStates) {
+  mrdLayers.forEach((layer, layerIndex) => {
+    layer.paddles.forEach((paddle, paddleIndex) => {
+      const state = baseStates[layerIndex]?.paddles[paddleIndex];
+      if (!state) {
+        return;
+      }
+      paddle.material.color.setHex(state.color);
+      paddle.material.emissive?.setHex(state.emissive ?? 0x000000);
+      if ("emissiveIntensity" in paddle.material) {
+        paddle.material.emissiveIntensity = state.emissiveIntensity;
+      }
+    });
+  });
 }
 
 function captureBaseStates(meshMap) {

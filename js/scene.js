@@ -18,14 +18,18 @@ const DETECTOR = {
     radius: 0.1016,
   },
   mrd: {
-    layerCount: 11,
-    layerSpacing: 0.1211,
-    layerThickness: 0.05,
-    startX: 2.42,
-    height: 2.74,
-    widthZ: 3.05,
-    enclosureHeight: 3.44256,
-    enclosureWidthZ: 3.78256,
+    absorberCount: 11,
+    scintillatorLayerCount: 11,
+    horizontalLayers: 6,
+    verticalLayers: 5,
+    layerSpacing: 0.14,
+    absorberThickness: 0.05,
+    scintillatorThickness: 0.025,
+    startZ: 2.38,
+    heightY: 2.74,
+    widthX: 3.05,
+    paddleCountPerLayer: 12,
+    realPaddleCountApprox: "306-310",
     materialName: "MRDSteel",
     scintillatorMaterialName: "Scinti",
   },
@@ -55,19 +59,28 @@ export const detectorGeometry = {
     fiducialYMaxMeters: DETECTOR.tank.center.y + DETECTOR.tank.height / 2 - DETECTOR.tank.fiducialMarginY,
   },
   mrd: {
-    startXMeters: DETECTOR.mrd.startX,
-    layerCount: DETECTOR.mrd.layerCount,
+    startZMeters: DETECTOR.mrd.startZ,
+    layerCount: DETECTOR.mrd.scintillatorLayerCount,
+    absorberCount: DETECTOR.mrd.absorberCount,
     layerSpacingMeters: DETECTOR.mrd.layerSpacing,
-    layerThicknessMeters: DETECTOR.mrd.layerThickness,
-    heightMeters: DETECTOR.mrd.height,
-    widthZMeters: DETECTOR.mrd.widthZ,
+    absorberThicknessMeters: DETECTOR.mrd.absorberThickness,
+    scintillatorThicknessMeters: DETECTOR.mrd.scintillatorThickness,
+    heightMeters: DETECTOR.mrd.heightY,
+    widthXMeters: DETECTOR.mrd.widthX,
+    paddleCountPerLayer: DETECTOR.mrd.paddleCountPerLayer,
+    horizontalLayers: DETECTOR.mrd.horizontalLayers,
+    verticalLayers: DETECTOR.mrd.verticalLayers,
+    totalDepthMeters: DETECTOR.mrd.layerSpacing * (DETECTOR.mrd.scintillatorLayerCount - 1)
+      + DETECTOR.mrd.absorberThickness
+      + DETECTOR.mrd.scintillatorThickness,
+    realPaddleCountApprox: DETECTOR.mrd.realPaddleCountApprox,
     materialName: DETECTOR.mrd.materialName,
     scintillatorMaterialName: DETECTOR.mrd.scintillatorMaterialName,
   },
   frontVeto: {
     paddleCount: DETECTOR.veto.paddleCount,
     layers: DETECTOR.veto.layers,
-    xMeters: DETECTOR.veto.x,
+    zMeters: DETECTOR.veto.x,
     paddleLengthMeters: DETECTOR.veto.paddleLength,
     paddleWidthMeters: DETECTOR.veto.paddleWidth,
     paddleThicknessMeters: DETECTOR.veto.paddleThickness,
@@ -94,9 +107,9 @@ export const detectorGeometry = {
     ],
   },
   coordinateSystem: {
-    beam: "+X",
+    beam: "+Z",
     vertical: "+Y",
-    horizontalTransverse: "+Z",
+    horizontalTransverse: "+X",
   },
   pmtPositions,
   lappdPositions,
@@ -399,14 +412,15 @@ function addWallPmtSupportFrames(group) {
 
 function addMrd(group, mrdLayers) {
   const {
-    layerCount,
+    absorberCount,
+    scintillatorLayerCount,
     layerSpacing,
-    layerThickness,
-    startX,
-    height,
-    widthZ,
-    enclosureHeight,
-    enclosureWidthZ,
+    absorberThickness,
+    scintillatorThickness,
+    startZ,
+    heightY,
+    widthX,
+    paddleCountPerLayer,
   } = DETECTOR.mrd;
   const ironMaterial = new THREE.MeshStandardMaterial({
     color: 0x171a1c,
@@ -414,52 +428,52 @@ function addMrd(group, mrdLayers) {
     roughness: 0.36,
   });
   const scintillatorMaterial = new THREE.MeshStandardMaterial({
-    color: 0x355f69,
-    emissive: 0x071f25,
+    color: 0x2b8fa3,
+    emissive: 0x06252c,
     metalness: 0.08,
     roughness: 0.36,
   });
-  const tubeMaterial = new THREE.MeshStandardMaterial({
-    color: 0x4a4e50,
-    metalness: 0.25,
-    roughness: 0.34,
-  });
-  const layerGeometry = new THREE.BoxGeometry(layerThickness, height, widthZ);
-  const scintillatorGeometry = new THREE.BoxGeometry(0.025, enclosureHeight, 0.045);
-  const tubeGeometry = new THREE.CylinderGeometry(0.035, 0.035, 0.38, 12);
 
-  for (let i = 0; i < layerCount; i += 1) {
-    const layer = new THREE.Mesh(layerGeometry, ironMaterial.clone());
-    layer.position.set(startX + i * layerSpacing, DETECTOR.tank.center.y, 0);
-    layer.name = `MRD iron layer ${i + 1}`;
-    group.add(layer);
-    mrdLayers.push(layer);
+  for (let i = 0; i < absorberCount; i += 1) {
+    const absorberZ = startZ + i * layerSpacing;
+    const absorber = new THREE.Mesh(
+      new THREE.BoxGeometry(widthX, heightY, absorberThickness),
+      ironMaterial.clone(),
+    );
+    absorber.position.set(0, DETECTOR.tank.center.y, absorberZ);
+    absorber.name = `MRD iron absorber ${i + 1}`;
+    group.add(absorber);
 
-    const paddleCount = 12;
-    for (let iz = 0; iz < paddleCount; iz += 1) {
-      const paddle = new THREE.Mesh(scintillatorGeometry, scintillatorMaterial);
-      paddle.position.set(
-        layer.position.x - layerThickness / 2 - 0.035,
-        DETECTOR.tank.center.y,
-        -enclosureWidthZ / 2 + 0.22 + iz * ((enclosureWidthZ - 0.44) / (paddleCount - 1)),
-      );
-      group.add(paddle);
+    if (i >= scintillatorLayerCount) {
+      continue;
     }
 
-    for (let iy = 0; iy < 8; iy += 1) {
-      for (let iz = 0; iz < 7; iz += 1) {
-        if ((iy + iz + i) % 3 === 0) {
-          const tube = new THREE.Mesh(tubeGeometry, tubeMaterial);
-          tube.rotation.z = Math.PI / 2;
-          tube.position.set(
-            layer.position.x - layerThickness / 2 - 0.08,
-            DETECTOR.tank.center.y - height / 2 + 0.32 + iy * 0.34,
-            -widthZ / 2 + 0.3 + iz * 0.39,
-          );
-          group.add(tube);
-        }
+    const scintillatorZ = absorberZ + absorberThickness / 2 + scintillatorThickness / 2 + 0.018;
+    const orientation = i % 2 === 0 ? "horizontal" : "vertical";
+    const layer = {
+      index: i,
+      orientation,
+      zMeters: scintillatorZ,
+      paddles: [],
+    };
+    const paddleGeometry = orientation === "horizontal"
+      ? new THREE.BoxGeometry(widthX, heightY / paddleCountPerLayer * 0.82, scintillatorThickness)
+      : new THREE.BoxGeometry(widthX / paddleCountPerLayer * 0.82, heightY, scintillatorThickness);
+
+    for (let paddleIndex = 0; paddleIndex < paddleCountPerLayer; paddleIndex += 1) {
+      const paddle = new THREE.Mesh(paddleGeometry, scintillatorMaterial.clone());
+      if (orientation === "horizontal") {
+        const y = DETECTOR.tank.center.y - heightY / 2 + (paddleIndex + 0.5) * (heightY / paddleCountPerLayer);
+        paddle.position.set(0, y, scintillatorZ);
+      } else {
+        const x = -widthX / 2 + (paddleIndex + 0.5) * (widthX / paddleCountPerLayer);
+        paddle.position.set(x, DETECTOR.tank.center.y, scintillatorZ);
       }
+      paddle.name = `MRD ${orientation} scintillator ${i + 1}-${paddleIndex + 1}`;
+      group.add(paddle);
+      layer.paddles.push(paddle);
     }
+    mrdLayers.push(layer);
   }
 }
 
@@ -479,25 +493,25 @@ function addFrontVeto(group) {
     metalness: 0.42,
     roughness: 0.32,
   });
-  const paddleGeometry = new THREE.BoxGeometry(paddleThickness, paddleWidth, paddleLength);
+  const paddleGeometry = new THREE.BoxGeometry(paddleLength, paddleWidth, paddleThickness);
 
   for (let layer = 0; layer < layers; layer += 1) {
-    const layerX = x - layer * 0.045;
+    const layerZ = x - layer * 0.045;
     for (let i = 0; i < paddlesPerLayer; i += 1) {
       const paddle = new THREE.Mesh(paddleGeometry, paddleMaterial);
       paddle.position.set(
-        layerX,
-        DETECTOR.tank.center.y - 1.84 + i * 0.307 + layer * 0.006,
         0,
+        DETECTOR.tank.center.y - 1.84 + i * 0.307 + layer * 0.006,
+        layerZ,
       );
       group.add(paddle);
     }
   }
 
   const frameGeometry = new THREE.BoxGeometry(0.035, DETECTOR.veto.height, 0.035);
-  for (const z of [-widthZ / 2, widthZ / 2]) {
+  for (const xPosition of [-widthZ / 2, widthZ / 2]) {
     const upright = new THREE.Mesh(frameGeometry, frameMaterial);
-    upright.position.set(x + 0.035, DETECTOR.tank.center.y, z);
+    upright.position.set(xPosition, DETECTOR.tank.center.y, x + 0.035);
     group.add(upright);
   }
 }
@@ -505,9 +519,9 @@ function addFrontVeto(group) {
 function addDetectorAxes(group) {
   const origin = new THREE.Vector3(-2.25, 0.15, -2.25);
   const axes = [
-    { direction: new THREE.Vector3(1, 0, 0), color: 0xff6f61, label: "+X Beam" },
+    { direction: new THREE.Vector3(1, 0, 0), color: 0xff6f61, label: "+X Transverse" },
     { direction: new THREE.Vector3(0, 1, 0), color: 0x8bd450, label: "+Y Vertical" },
-    { direction: new THREE.Vector3(0, 0, 1), color: 0x67b7ff, label: "+Z Transverse" },
+    { direction: new THREE.Vector3(0, 0, 1), color: 0x67b7ff, label: "+Z Beam" },
   ];
 
   for (const axis of axes) {
