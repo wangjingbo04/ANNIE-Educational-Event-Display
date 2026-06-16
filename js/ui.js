@@ -36,7 +36,7 @@ export function initUI({ statusText, sceneDisplay }) {
       <input id="show-cone" type="checkbox" checked />
       <span>Show Cherenkov Cone</span>
     </label>
-    <p class="control-note">Cherenkov light is only drawn inside the Gd-loaded water volume.</p>
+    <p class="control-note">Cherenkov light is contained in the water tank. The MRD detects the muon track, not light.</p>
     <div class="button-row">
       <button id="show-pmt-hits" type="button" disabled>Show PMT Hits</button>
       <button id="reset-pmt-hits" type="button" disabled>Reset PMT Hits</button>
@@ -106,12 +106,12 @@ export function initUI({ statusText, sceneDisplay }) {
       return;
     }
     sceneDisplay.showDetectorHits(currentEvent.response);
-    statusText.textContent = "PMT and LAPPD hits shown";
+    statusText.textContent = "PMT hits shown";
   });
 
   resetPmtHitsButton.addEventListener("click", () => {
     sceneDisplay.resetDetectorHits();
-    statusText.textContent = "PMT and LAPPD hit display reset";
+    statusText.textContent = "PMT hit display reset";
   });
 }
 
@@ -133,8 +133,6 @@ function renderObservables(event) {
       <dd>${response.totals.pmtHits}</dd>
       <dt>Total PMT charge</dt>
       <dd>${response.totals.pmtCharge.toFixed(1)}</dd>
-      <dt>LAPPD hits</dt>
-      <dd>${response.totals.lappdHits}</dd>
       <dt>Muon angle</dt>
       <dd>${event.truth.muonAngleDegrees === null ? "Not shown" : `${event.truth.muonAngleDegrees.toFixed(1)} deg`}</dd>
       <dt>Muon track length</dt>

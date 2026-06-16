@@ -1,7 +1,7 @@
 import * as THREE from "three";
 import { getCherenkovConeDimensions, getCherenkovSource, getCherenkovTrackLength, getMuonDirection } from "./cherenkov.js";
 
-export function createEventDisplay({ detectorGeometry, scene, lappdMeshes, mrdLayers, pmtMeshes }) {
+export function createEventDisplay({ detectorGeometry, scene, mrdLayers, pmtMeshes }) {
   const eventGroup = new THREE.Group();
   eventGroup.name = "event display";
   scene.add(eventGroup);
@@ -16,7 +16,6 @@ export function createEventDisplay({ detectorGeometry, scene, lappdMeshes, mrdLa
 
   const baseMrdColors = mrdLayers.map((layer) => layer.material.color.getHex());
   const pmtBaseStates = captureBaseStates(pmtMeshes);
-  const lappdBaseStates = captureBaseStates(lappdMeshes);
 
   function showEvent(event, { showCone = true } = {}) {
     clearEvent();
@@ -80,23 +79,11 @@ export function createEventDisplay({ detectorGeometry, scene, lappdMeshes, mrdLa
       mesh.scale.setScalar(scale);
       tintMesh(mesh, 0xfff36c, 0xffbf00, 0.85);
     }
-
-    for (const hit of response.lappdHits) {
-      const mesh = lappdMeshes.get(hit.id);
-      if (!mesh) {
-        continue;
-      }
-
-      mesh.scale.setScalar(1.16);
-      tintMesh(mesh, 0x91ff66, 0x31ff55, 0.95);
-      addHitMarker(hitMarkerGroup, hit.hitPosition, 0x31ff55);
-    }
   }
 
   function resetDetectorHits() {
     hitMarkerGroup.clear();
     restoreBaseStates(pmtMeshes, pmtBaseStates);
-    restoreBaseStates(lappdMeshes, lappdBaseStates);
   }
 
   return {
@@ -167,11 +154,11 @@ function addCherenkovCone(group, event, maxRadius) {
   const { length, radius } = getCherenkovConeDimensions(trackLength, maxRadius);
   const geometry = new THREE.ConeGeometry(radius, length, 72, 1, true);
   const material = new THREE.MeshStandardMaterial({
-    color: 0x31a8ff,
-    emissive: 0x0b4f8a,
-    emissiveIntensity: 0.25,
+    color: 0xffe45c,
+    emissive: 0xffb000,
+    emissiveIntensity: 0.42,
     transparent: true,
-    opacity: 0.18,
+    opacity: 0.24,
     side: THREE.DoubleSide,
     depthWrite: false,
   });
@@ -179,19 +166,6 @@ function addCherenkovCone(group, event, maxRadius) {
   cone.position.copy(source).add(direction.clone().multiplyScalar(length / 2));
   cone.quaternion.setFromUnitVectors(new THREE.Vector3(0, -1, 0), direction);
   group.add(cone);
-}
-
-function addHitMarker(group, positionArray, color) {
-  const marker = new THREE.Mesh(
-    new THREE.SphereGeometry(0.045, 16, 16),
-    new THREE.MeshStandardMaterial({
-      color,
-      emissive: color,
-      emissiveIntensity: 1.2,
-    }),
-  );
-  marker.position.fromArray(positionArray);
-  group.add(marker);
 }
 
 function lightMrdLayers(mrdLayers, crossedLayers) {

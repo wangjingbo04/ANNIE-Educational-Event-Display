@@ -5,29 +5,44 @@ import { createEventDisplay } from "./eventDisplay.js";
 const DETECTOR = {
   tank: {
     radius: 1.5,
+    bodyRadius: 1.524,
+    baseRadius: 1.5494,
     height: 3.7,
     center: new THREE.Vector3(0, 1.85, 0),
+    materialName: "TankWater",
+    shellMaterialName: "TankSteel",
+    fiducialRadius: 1.1,
+    fiducialMarginY: 0.55,
   },
   pmt: {
     radius: 0.1016,
   },
-  lappd: {
-    width: 0.2032,
-    height: 0.2032,
-    depth: 0.022,
-  },
   mrd: {
-    layerCount: 7,
-    layerSpacing: 0.28,
-    layerThickness: 0.1,
-    startX: 2.45,
-    height: 3.4,
-    widthZ: 3.4,
+    layerCount: 11,
+    layerSpacing: 0.1211,
+    layerThickness: 0.05,
+    startX: 2.42,
+    height: 2.74,
+    widthZ: 3.05,
+    enclosureHeight: 3.44256,
+    enclosureWidthZ: 3.78256,
+    materialName: "MRDSteel",
+    scintillatorMaterialName: "Scinti",
+  },
+  veto: {
+    paddleCount: 26,
+    layers: 2,
+    paddleLength: 3.2,
+    paddleWidth: 0.305,
+    paddleThickness: 0.02,
+    x: -2.18,
+    height: 4.2149,
+    widthZ: 3.2,
   },
 };
 
 const pmtPositions = buildPmtPositions();
-const lappdPositions = buildLappdPositions(pmtPositions);
+const lappdPositions = [];
 
 export const detectorGeometry = {
   tank: {
@@ -35,6 +50,9 @@ export const detectorGeometry = {
     radiusMeters: DETECTOR.tank.radius,
     heightMeters: DETECTOR.tank.height,
     centerMeters: DETECTOR.tank.center.toArray(),
+    fiducialRadiusMeters: DETECTOR.tank.fiducialRadius,
+    fiducialYMinMeters: DETECTOR.tank.center.y - DETECTOR.tank.height / 2 + DETECTOR.tank.fiducialMarginY,
+    fiducialYMaxMeters: DETECTOR.tank.center.y + DETECTOR.tank.height / 2 - DETECTOR.tank.fiducialMarginY,
   },
   mrd: {
     startXMeters: DETECTOR.mrd.startX,
@@ -43,6 +61,37 @@ export const detectorGeometry = {
     layerThicknessMeters: DETECTOR.mrd.layerThickness,
     heightMeters: DETECTOR.mrd.height,
     widthZMeters: DETECTOR.mrd.widthZ,
+    materialName: DETECTOR.mrd.materialName,
+    scintillatorMaterialName: DETECTOR.mrd.scintillatorMaterialName,
+  },
+  frontVeto: {
+    paddleCount: DETECTOR.veto.paddleCount,
+    layers: DETECTOR.veto.layers,
+    xMeters: DETECTOR.veto.x,
+    paddleLengthMeters: DETECTOR.veto.paddleLength,
+    paddleWidthMeters: DETECTOR.veto.paddleWidth,
+    paddleThicknessMeters: DETECTOR.veto.paddleThickness,
+  },
+  gdmlSource: {
+    repository: "ANNIEsoft/WCSim",
+    branch: "annie",
+    file: "annie_v04.gdml",
+    notes: [
+      "WATER_S rmax=1519.24 mm z=3956.05 mm",
+      "TBODY_S rmax=1524.0 mm z=3956.05 mm",
+      "steelPlate x=3050 mm y=2740 mm z=50 mm",
+      "11 MRD steel placements with 121.1 mm spacing",
+      "front veto represented as two layers of 13 scintillator paddles",
+    ],
+  },
+  pmtScanSource: {
+    file: "PMTPositions_Scan.txt",
+    count: 132,
+    notes: [
+      "PMT scan IDs 332-463 contain 132 PMTs",
+      "Current educational layout adds extra wall rings for more uniform teaching coverage",
+      "Active layout has 20 top PMTs, 20 bottom PMTs, and 184 wall PMTs",
+    ],
   },
   coordinateSystem: {
     beam: "+X",
@@ -76,7 +125,6 @@ export function initScene({ container, onReady }) {
   const eventDisplay = createEventDisplay({
     scene,
     detectorGeometry,
-    lappdMeshes: detectorModel.lappdMeshes,
     mrdLayers: detectorModel.mrdLayers,
     pmtMeshes: detectorModel.pmtMeshes,
   });
@@ -120,7 +168,6 @@ function addLighting(scene) {
 
 function addDetectorModel(scene) {
   const group = new THREE.Group();
-  const lappdMeshes = new Map();
   const mrdLayers = [];
   const pmtMeshes = new Map();
 
@@ -128,17 +175,17 @@ function addDetectorModel(scene) {
   addCapSupportArrays(group);
   addWallPmtSupportFrames(group);
   addPmts(group, pmtMeshes);
-  addLappds(group, lappdMeshes);
+  addFrontVeto(group);
   addMrd(group, mrdLayers);
   addDetectorAxes(group);
 
   scene.add(group);
 
-  return { lappdMeshes, mrdLayers, pmtMeshes };
+  return { mrdLayers, pmtMeshes };
 }
 
 function addWaterTank(group) {
-  const { radius, height, center } = DETECTOR.tank;
+  const { radius, bodyRadius, baseRadius, height, center } = DETECTOR.tank;
   const waterGeometry = new THREE.CylinderGeometry(radius, radius, height, 96, 1, false);
   const waterMaterial = new THREE.MeshPhysicalMaterial({
     color: 0x2f9fd7,
@@ -160,7 +207,19 @@ function addWaterTank(group) {
     roughness: 0.2,
   });
 
-  const topRing = new THREE.Mesh(new THREE.TorusGeometry(radius, 0.025, 16, 96), frameMaterial);
+  const shellMaterial = new THREE.MeshStandardMaterial({
+    color: 0x9aa6aa,
+    metalness: 0.62,
+    roughness: 0.28,
+    transparent: true,
+    opacity: 0.18,
+  });
+  const shell = new THREE.Mesh(new THREE.CylinderGeometry(bodyRadius, bodyRadius, height, 96, 1, true), shellMaterial);
+  shell.position.copy(center);
+  shell.name = "ANNIE tank steel shell";
+  group.add(shell);
+
+  const topRing = new THREE.Mesh(new THREE.TorusGeometry(bodyRadius, 0.025, 16, 96), frameMaterial);
   topRing.position.set(center.x, center.y + height / 2, center.z);
   topRing.rotation.x = Math.PI / 2;
   group.add(topRing);
@@ -169,11 +228,16 @@ function addWaterTank(group) {
   bottomRing.position.y = center.y - height / 2;
   group.add(bottomRing);
 
+  const baseRing = new THREE.Mesh(new THREE.TorusGeometry(baseRadius, 0.018, 12, 96), frameMaterial);
+  baseRing.position.set(center.x, center.y - height / 2 + 0.04, center.z);
+  baseRing.rotation.x = Math.PI / 2;
+  group.add(baseRing);
+
   const sideLineGeometry = new THREE.CylinderGeometry(0.012, 0.012, height, 12);
   for (let i = 0; i < 8; i += 1) {
     const angle = (i / 8) * Math.PI * 2;
     const line = new THREE.Mesh(sideLineGeometry, frameMaterial);
-    line.position.set(Math.cos(angle) * radius, center.y, Math.sin(angle) * radius);
+    line.position.set(Math.cos(angle) * bodyRadius, center.y, Math.sin(angle) * bodyRadius);
     group.add(line);
   }
 }
@@ -196,23 +260,11 @@ function addCapSupportArrays(group) {
   topPlate.name = "top PMT support plate";
   group.add(topPlate);
 
-  const bottomPlate = new THREE.Mesh(new THREE.BoxGeometry(2.1, 0.055, 1.95), bottomMaterial);
-  bottomPlate.position.set(0, getBottomY() + 0.13, 0);
+  const bottomPlate = new THREE.Mesh(new THREE.CylinderGeometry(1.22, 1.22, 0.035, 72), bottomMaterial);
+  bottomPlate.position.set(0, getBottomY() + 0.012, 0);
   bottomPlate.name = "bottom PMT support platform";
   group.add(bottomPlate);
 
-  const tileMaterialA = new THREE.MeshStandardMaterial({ color: 0x121719, roughness: 0.58 });
-  const tileMaterialB = new THREE.MeshStandardMaterial({ color: 0x5f6c72, roughness: 0.48 });
-  for (let ix = -2; ix <= 2; ix += 1) {
-    for (let iz = -2; iz <= 2; iz += 1) {
-      const tile = new THREE.Mesh(
-        new THREE.BoxGeometry(0.34, 0.012, 0.34),
-        (ix + iz) % 2 === 0 ? tileMaterialA : tileMaterialB,
-      );
-      tile.position.set(ix * 0.34, getBottomY() + 0.165, iz * 0.34);
-      group.add(tile);
-    }
-  }
 }
 
 function addPmts(group, pmtMeshes) {
@@ -303,55 +355,6 @@ function createHemisphereGeometry(radius, radialSegments, heightSegments) {
   return geometry;
 }
 
-function addLappds(group, lappdMeshes) {
-  const panelMaterial = new THREE.MeshStandardMaterial({
-    color: 0x0c5f25,
-    metalness: 0.15,
-    roughness: 0.28,
-  });
-  const windowMaterial = new THREE.MeshStandardMaterial({
-    color: 0x31ff55,
-    emissive: 0x0f7a22,
-    roughness: 0.12,
-  });
-  const frameMaterial = new THREE.MeshStandardMaterial({
-    color: 0x9bff8c,
-    metalness: 0.45,
-    roughness: 0.22,
-  });
-  const panelGeometry = new THREE.BoxGeometry(DETECTOR.lappd.width, DETECTOR.lappd.height, DETECTOR.lappd.depth);
-  const windowGeometry = new THREE.PlaneGeometry(DETECTOR.lappd.width * 0.78, DETECTOR.lappd.height * 0.78);
-
-  for (const lappd of detectorGeometry.lappdPositions) {
-    const panelGroup = new THREE.Group();
-    panelGroup.position.copy(lappd.position);
-    panelGroup.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), lappd.normal);
-
-    const panel = new THREE.Mesh(panelGeometry, panelMaterial.clone());
-    panelGroup.add(panel);
-
-    const window = new THREE.Mesh(windowGeometry, windowMaterial.clone());
-    window.position.z = DETECTOR.lappd.depth / 2 + 0.002;
-    panelGroup.add(window);
-
-    const frame = new THREE.Mesh(
-      new THREE.BoxGeometry(DETECTOR.lappd.width * 1.15, DETECTOR.lappd.height * 1.15, DETECTOR.lappd.depth * 0.35),
-      frameMaterial.clone(),
-    );
-    frame.position.z = -DETECTOR.lappd.depth * 0.12;
-    panelGroup.add(frame);
-
-    panelGroup.userData = {
-      id: lappd.id,
-      positionMeters: lappd.position.toArray(),
-      normal: lappd.normal.toArray(),
-      surface: lappd.surface,
-    };
-    group.add(panelGroup);
-    lappdMeshes.set(lappd.id, panelGroup);
-  }
-}
-
 function addWallPmtSupportFrames(group) {
   const frameMaterial = new THREE.MeshStandardMaterial({
     color: 0xe9f3f6,
@@ -364,8 +367,8 @@ function addWallPmtSupportFrames(group) {
     metalness: 0.25,
     roughness: 0.24,
   });
-  const frameAngles = [22, 78, 145, 212, 287].map(degreesToRadians);
-  const yLevels = [0.62, 1.28, 1.98, 2.72, 3.26];
+  const frameAngles = getSupportFrameDegrees().map(degreesToRadians);
+  const yLevels = getWallPmtYLevels();
   const radius = DETECTOR.tank.radius + 0.025;
 
   for (const angle of frameAngles) {
@@ -395,10 +398,25 @@ function addWallPmtSupportFrames(group) {
 }
 
 function addMrd(group, mrdLayers) {
-  const { layerCount, layerSpacing, layerThickness, startX, height, widthZ } = DETECTOR.mrd;
+  const {
+    layerCount,
+    layerSpacing,
+    layerThickness,
+    startX,
+    height,
+    widthZ,
+    enclosureHeight,
+    enclosureWidthZ,
+  } = DETECTOR.mrd;
   const ironMaterial = new THREE.MeshStandardMaterial({
     color: 0x171a1c,
     metalness: 0.55,
+    roughness: 0.36,
+  });
+  const scintillatorMaterial = new THREE.MeshStandardMaterial({
+    color: 0x355f69,
+    emissive: 0x071f25,
+    metalness: 0.08,
     roughness: 0.36,
   });
   const tubeMaterial = new THREE.MeshStandardMaterial({
@@ -407,6 +425,7 @@ function addMrd(group, mrdLayers) {
     roughness: 0.34,
   });
   const layerGeometry = new THREE.BoxGeometry(layerThickness, height, widthZ);
+  const scintillatorGeometry = new THREE.BoxGeometry(0.025, enclosureHeight, 0.045);
   const tubeGeometry = new THREE.CylinderGeometry(0.035, 0.035, 0.38, 12);
 
   for (let i = 0; i < layerCount; i += 1) {
@@ -416,8 +435,19 @@ function addMrd(group, mrdLayers) {
     group.add(layer);
     mrdLayers.push(layer);
 
-    for (let iy = 0; iy < 9; iy += 1) {
-      for (let iz = 0; iz < 8; iz += 1) {
+    const paddleCount = 12;
+    for (let iz = 0; iz < paddleCount; iz += 1) {
+      const paddle = new THREE.Mesh(scintillatorGeometry, scintillatorMaterial);
+      paddle.position.set(
+        layer.position.x - layerThickness / 2 - 0.035,
+        DETECTOR.tank.center.y,
+        -enclosureWidthZ / 2 + 0.22 + iz * ((enclosureWidthZ - 0.44) / (paddleCount - 1)),
+      );
+      group.add(paddle);
+    }
+
+    for (let iy = 0; iy < 8; iy += 1) {
+      for (let iz = 0; iz < 7; iz += 1) {
         if ((iy + iz + i) % 3 === 0) {
           const tube = new THREE.Mesh(tubeGeometry, tubeMaterial);
           tube.rotation.z = Math.PI / 2;
@@ -430,6 +460,45 @@ function addMrd(group, mrdLayers) {
         }
       }
     }
+  }
+}
+
+function addFrontVeto(group) {
+  const { paddleCount, layers, paddleLength, paddleWidth, paddleThickness, x, widthZ } = DETECTOR.veto;
+  const paddlesPerLayer = paddleCount / layers;
+  const paddleMaterial = new THREE.MeshStandardMaterial({
+    color: 0x4fb4c7,
+    emissive: 0x0a2730,
+    metalness: 0.05,
+    roughness: 0.38,
+    transparent: true,
+    opacity: 0.82,
+  });
+  const frameMaterial = new THREE.MeshStandardMaterial({
+    color: 0x20282c,
+    metalness: 0.42,
+    roughness: 0.32,
+  });
+  const paddleGeometry = new THREE.BoxGeometry(paddleThickness, paddleWidth, paddleLength);
+
+  for (let layer = 0; layer < layers; layer += 1) {
+    const layerX = x - layer * 0.045;
+    for (let i = 0; i < paddlesPerLayer; i += 1) {
+      const paddle = new THREE.Mesh(paddleGeometry, paddleMaterial);
+      paddle.position.set(
+        layerX,
+        DETECTOR.tank.center.y - 1.84 + i * 0.307 + layer * 0.006,
+        0,
+      );
+      group.add(paddle);
+    }
+  }
+
+  const frameGeometry = new THREE.BoxGeometry(0.035, DETECTOR.veto.height, 0.035);
+  for (const z of [-widthZ / 2, widthZ / 2]) {
+    const upright = new THREE.Mesh(frameGeometry, frameMaterial);
+    upright.position.set(x + 0.035, DETECTOR.tank.center.y, z);
+    group.add(upright);
   }
 }
 
@@ -478,119 +547,59 @@ function addCapPmtPositions(positions, surface, y, normal, prefix, layout) {
 }
 
 function addWallPmtPositions(positions) {
-  const frameLayouts = [
-    { angle: 24, ys: [0.74, 1.42, 2.12, 2.88], offsets: [-0.09, 0.1, -0.06, 0.08] },
-    { angle: 82, ys: [0.92, 1.68, 2.36, 3.08], offsets: [0.08, -0.08, 0.11, -0.05] },
-    { angle: 151, ys: [0.66, 1.28, 2.02, 2.76], offsets: [0.05, -0.1, 0.08, -0.07] },
-    { angle: 227, ys: [0.98, 1.58, 2.2, 3.0], offsets: [-0.08, 0.06, -0.11, 0.08] },
-    { angle: 304, ys: [0.78, 1.5, 2.32, 2.94], offsets: [0.1, -0.06, 0.05, -0.09] },
-  ];
+  const yLevels = getWallPmtYLevels();
   let id = 1;
 
-  for (const frame of frameLayouts) {
-    const baseAngle = degreesToRadians(frame.angle);
-    for (let i = 0; i < frame.ys.length; i += 1) {
-      const angle = baseAngle + frame.offsets[i];
+  for (let row = 0; row < yLevels.length; row += 1) {
+    const phase = row % 2 === 0 ? 0 : 0.5;
+    for (let column = 0; column < 23; column += 1) {
+      const angle = ((column + phase) / 23) * Math.PI * 2;
       positions.push({
         id: `W${String(id).padStart(2, "0")}`,
         surface: "wall-frame",
-        position: cylindricalWallPosition(angle, frame.ys[i], DETECTOR.tank.radius - 0.07),
+        position: cylindricalWallPosition(angle, yLevels[row], DETECTOR.tank.radius - 0.07),
         normal: inwardWallNormal(angle),
-        supportFrameDegrees: frame.angle,
+        sourceApproximation: "even cylindrical wall coverage",
       });
       id += 1;
     }
   }
-}
-
-function buildLappdPositions(existingPmtPositions) {
-  const positions = [];
-  const angleRows = [
-    [32, 62, 92, 122, 152, 182, 212, 242, 272, 302, 332],
-    [46, 76, 106, 136, 166, 196, 226, 256, 286, 316, 346],
-    [34, 64, 94, 124, 154, 184, 214, 244, 274, 304, 334],
-    [48, 78, 108, 138, 168, 198, 228, 258, 288, 318, 348],
-    [36, 66, 96, 126, 156, 186, 216, 246, 276, 306, 336],
-    [50, 80, 110, 140, 170, 200, 230, 260, 290, 320, 350],
-  ];
-  const yRows = [0.48, 1.02, 1.56, 2.1, 2.64, 3.18];
-  let id = 1;
-
-  for (let row = 0; row < yRows.length; row += 1) {
-    for (const degrees of angleRows[row]) {
-      const angle = degreesToRadians(degrees);
-      if (isNearWallPmt(existingPmtPositions, angle, yRows[row])) {
-        continue;
-      }
-
-      positions.push({
-        id: `LAPPD${String(id).padStart(2, "0")}`,
-        surface: "wall-lappd",
-        position: cylindricalWallPosition(angle, yRows[row], DETECTOR.tank.radius - 0.045),
-        normal: inwardWallNormal(angle),
-        widthMeters: DETECTOR.lappd.width,
-        heightMeters: DETECTOR.lappd.height,
-      });
-      id += 1;
-    }
-  }
-
-  return positions;
-}
-
-function isNearWallPmt(existingPmtPositions, angle, y) {
-  return existingPmtPositions.some((pmt) => {
-    if (pmt.surface !== "wall-frame") {
-      return false;
-    }
-    const pmtAngle = Math.atan2(pmt.position.z, pmt.position.x);
-    const angularDistance = Math.abs(normalizeAngle(angle - pmtAngle));
-    const verticalDistance = Math.abs(y - pmt.position.y);
-
-    return angularDistance < 0.18 && verticalDistance < 0.34;
-  });
-}
-
-function normalizeAngle(angle) {
-  return Math.atan2(Math.sin(angle), Math.cos(angle));
 }
 
 function getTopPmtLayout() {
-  return [
-    [0, 0],
-    [-0.42, -0.24],
-    [0.42, -0.24],
-    [-0.42, 0.24],
-    [0.42, 0.24],
-    [0, -0.58],
-    [0, 0.58],
-    [-0.82, -0.58],
-    [0.82, -0.58],
-    [-0.82, 0],
-    [0.82, 0],
-    [-0.82, 0.58],
-    [0.82, 0.58],
-    [0.32, 1.03],
-  ];
+  return buildEvenCapLayout();
 }
 
 function getBottomPmtLayout() {
-  return [
-    [0.12, -0.04],
-    [-0.35, -0.34],
-    [0.54, -0.34],
-    [-0.52, 0.18],
-    [0.36, 0.28],
-    [-0.06, -0.72],
-    [0.1, 0.72],
-    [-0.94, -0.44],
-    [0.74, -0.64],
-    [-0.88, 0.38],
-    [0.92, 0.08],
-    [-0.58, 0.78],
-    [0.68, 0.76],
-    [-0.12, 1.08],
+  return buildEvenCapLayout(Math.PI / 10);
+}
+
+function buildEvenCapLayout(phase = 0) {
+  const layout = [[0, 0]];
+  const rings = [
+    { count: 7, radius: 0.45, phase },
+    { count: 12, radius: 0.92, phase: phase + Math.PI / 12 },
   ];
+
+  for (const ring of rings) {
+    for (let i = 0; i < ring.count; i += 1) {
+      const angle = ring.phase + (i / ring.count) * Math.PI * 2;
+      layout.push([Math.cos(angle) * ring.radius, Math.sin(angle) * ring.radius]);
+    }
+  }
+
+  return layout;
+}
+
+function getSupportFrameDegrees() {
+  return Array.from({ length: 12 }, (_, index) => (index / 12) * 360);
+}
+
+function getWallPmtYLevels() {
+  const bottom = getBottomY() + 0.45;
+  const top = getTopY() - 0.45;
+  const ringCount = 8;
+  return Array.from({ length: ringCount }, (_, index) => bottom + (index / (ringCount - 1)) * (top - bottom));
 }
 
 function getTopY() {

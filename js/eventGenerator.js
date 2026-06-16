@@ -11,11 +11,11 @@ const MUON_ENERGY_FRACTIONS = {
   "DIS-like": [0.3, 0.65],
 };
 const MUON_ANGLE_RANGES = {
-  0.6: [15, 45],
-  0.8: [10, 40],
-  1.0: [8, 35],
-  1.5: [5, 25],
-  2.0: [3, 20],
+  0.6: [8, 28],
+  0.8: [7, 24],
+  1.0: [5, 20],
+  1.5: [3, 15],
+  2.0: [2, 12],
 };
 const NEUTRON_RANGES = {
   "CCQE-like": [0, 1],
@@ -41,10 +41,10 @@ export function generateEvent({ neutrinoEnergy, eventType, noiseLevel }) {
   const muonEnergy = randomMuonEnergy(neutrinoEnergy, eventType);
   const muonDirection = randomMuonDirection(muonAngleDegrees);
   const waterExit = calculateRayCylinderIntersection(vertex, muonDirection, detectorGeometry.tank);
-  const muonRangeInWater = estimateMuonRangeInWater(muonEnergy);
-  const waterTrackLength = Math.min(waterExit.distance, muonRangeInWater);
-  const waterEnd = vertex.clone().add(muonDirection.clone().multiplyScalar(waterTrackLength));
-  const mrd = estimateMrdSegment(waterEnd, muonDirection, muonRangeInWater - waterTrackLength);
+  const waterTrackLength = waterExit.distance;
+  const waterExitPoint = waterExit.point;
+  const totalMuonTrackLength = estimateMuonTrackLength(muonEnergy);
+  const mrd = estimateMrdSegment(waterExitPoint, muonDirection, totalMuonTrackLength - waterTrackLength);
   const neutronMultiplicity = randomInteger(...NEUTRON_RANGES[eventType]);
 
   return {
@@ -62,7 +62,7 @@ export function generateEvent({ neutrinoEnergy, eventType, noiseLevel }) {
       muonEnergyGeV: round(muonEnergy, 3),
       muonDirection: vectorToArray(muonDirection),
       muonAngleDegrees: round(muonAngleDegrees, 1),
-      waterExitPointMeters: vectorToArray(waterEnd),
+      waterExitPointMeters: vectorToArray(waterExitPoint),
       muonTrackLengthWaterMeters: round(waterTrackLength, 2),
       projectedMrdTrackLengthMeters: round(mrd.length, 2),
       neutronMultiplicity,
@@ -82,7 +82,7 @@ export function generateEvent({ neutrinoEnergy, eventType, noiseLevel }) {
       vertex: vectorToArray(vertex),
       muonTrack: {
         start: vectorToArray(vertex),
-        end: vectorToArray(waterEnd),
+        end: vectorToArray(waterExitPoint),
       },
       mrdTrack: mrd.length > 0 ? {
         start: vectorToArray(mrd.start),
@@ -145,11 +145,11 @@ function generateCosmicEvent({ noiseLevel }) {
 }
 
 function randomVertexInTank() {
-  const radius = Math.sqrt(Math.random()) * detectorGeometry.tank.radiusMeters * 0.82;
+  const radius = Math.sqrt(Math.random()) * detectorGeometry.tank.fiducialRadiusMeters;
   const angle = randomBetween(0, Math.PI * 2);
   return new THREE.Vector3(
     Math.cos(angle) * radius,
-    randomBetween(getBottomY() + 0.35, getTopY() - 0.35),
+    randomBetween(detectorGeometry.tank.fiducialYMinMeters, detectorGeometry.tank.fiducialYMaxMeters),
     Math.sin(angle) * radius,
   );
 }
@@ -174,23 +174,25 @@ function randomMuonDirection(angleDegrees) {
   ).normalize();
 }
 
-function estimateMuonRangeInWater(muonEnergyGeV) {
-  return 4.6 * muonEnergyGeV;
+function estimateMuonTrackLength(muonEnergyGeV) {
+  return 3.2 + 5.6 * muonEnergyGeV;
 }
 
-function estimateMrdSegment(waterEnd, direction, remainingRange) {
+function estimateMrdSegment(waterExitPoint, direction, remainingRange) {
   if (direction.x <= 0.05 || remainingRange <= 0) {
     return { length: 0, crossedLayers: [], start: null, end: null };
   }
 
   const mrdStartX = detectorGeometry.mrd.startXMeters;
-  const distanceToMrd = (mrdStartX - waterEnd.x) / direction.x;
+  const distanceToMrd = (mrdStartX - waterExitPoint.x) / direction.x;
   if (distanceToMrd < 0 || distanceToMrd > remainingRange + 0.25) {
     return { length: 0, crossedLayers: [], start: null, end: null };
   }
 
-  const start = waterEnd.clone().add(direction.clone().multiplyScalar(Math.max(distanceToMrd, 0)));
-  const maxLength = Math.min(remainingRange - Math.max(distanceToMrd, 0), 2.1);
+  const start = waterExitPoint.clone().add(direction.clone().multiplyScalar(Math.max(distanceToMrd, 0)));
+  const mrdDepth = detectorGeometry.mrd.layerSpacingMeters * (detectorGeometry.mrd.layerCount - 1)
+    + detectorGeometry.mrd.layerThicknessMeters;
+  const maxLength = Math.min(remainingRange - Math.max(distanceToMrd, 0), mrdDepth / Math.max(direction.x, 0.05));
   const length = Math.max(0, maxLength);
   const end = start.clone().add(direction.clone().multiplyScalar(length));
   const crossedLayers = getCrossedMrdLayers(start.x, end.x);
