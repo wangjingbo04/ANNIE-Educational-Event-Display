@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+import { createEventDisplay } from "./eventDisplay.js";
 
 const DETECTOR = {
   tank: {
@@ -25,18 +26,31 @@ const DETECTOR = {
   },
 };
 
+const pmtPositions = buildPmtPositions();
+const lappdPositions = buildLappdPositions(pmtPositions);
+
 export const detectorGeometry = {
   tank: {
     diameterMeters: DETECTOR.tank.radius * 2,
+    radiusMeters: DETECTOR.tank.radius,
     heightMeters: DETECTOR.tank.height,
+    centerMeters: DETECTOR.tank.center.toArray(),
+  },
+  mrd: {
+    startXMeters: DETECTOR.mrd.startX,
+    layerCount: DETECTOR.mrd.layerCount,
+    layerSpacingMeters: DETECTOR.mrd.layerSpacing,
+    layerThicknessMeters: DETECTOR.mrd.layerThickness,
+    heightMeters: DETECTOR.mrd.height,
+    widthZMeters: DETECTOR.mrd.widthZ,
   },
   coordinateSystem: {
     beam: "+X",
     vertical: "+Y",
     horizontalTransverse: "+Z",
   },
-  pmtPositions: buildPmtPositions(),
-  lappdPositions: buildLappdPositions(),
+  pmtPositions,
+  lappdPositions,
 };
 
 export function initScene({ container, onReady }) {
@@ -57,8 +71,13 @@ export function initScene({ container, onReady }) {
   controls.target.set(1.35, 1.65, 0);
 
   addLighting(scene);
-  addDetectorModel(scene);
+  const detectorModel = addDetectorModel(scene);
   addGround(scene);
+  const eventDisplay = createEventDisplay({
+    scene,
+    detectorGeometry,
+    mrdLayers: detectorModel.mrdLayers,
+  });
 
   const resizeObserver = new ResizeObserver(() => {
     resizeRenderer(container, camera, renderer);
@@ -74,6 +93,11 @@ export function initScene({ container, onReady }) {
   resizeRenderer(container, camera, renderer);
   animate();
   onReady?.();
+
+  return {
+    showEvent: eventDisplay.showEvent,
+    clearEvent: eventDisplay.clearEvent,
+  };
 }
 
 function addLighting(scene) {
@@ -91,16 +115,19 @@ function addLighting(scene) {
 
 function addDetectorModel(scene) {
   const group = new THREE.Group();
+  const mrdLayers = [];
 
   addWaterTank(group);
   addCapSupportArrays(group);
   addWallPmtSupportFrames(group);
   addPmts(group);
   addLappds(group);
-  addMrd(group);
+  addMrd(group, mrdLayers);
   addDetectorAxes(group);
 
   scene.add(group);
+
+  return { mrdLayers };
 }
 
 function addWaterTank(group) {
@@ -320,7 +347,7 @@ function addWallPmtSupportFrames(group) {
   }
 }
 
-function addMrd(group) {
+function addMrd(group, mrdLayers) {
   const { layerCount, layerSpacing, layerThickness, startX, height, widthZ } = DETECTOR.mrd;
   const ironMaterial = new THREE.MeshStandardMaterial({
     color: 0x171a1c,
@@ -336,10 +363,11 @@ function addMrd(group) {
   const tubeGeometry = new THREE.CylinderGeometry(0.035, 0.035, 0.38, 12);
 
   for (let i = 0; i < layerCount; i += 1) {
-    const layer = new THREE.Mesh(layerGeometry, ironMaterial);
+    const layer = new THREE.Mesh(layerGeometry, ironMaterial.clone());
     layer.position.set(startX + i * layerSpacing, DETECTOR.tank.center.y, 0);
     layer.name = `MRD iron layer ${i + 1}`;
     group.add(layer);
+    mrdLayers.push(layer);
 
     for (let iy = 0; iy < 9; iy += 1) {
       for (let iz = 0; iz < 8; iz += 1) {
@@ -428,26 +456,56 @@ function addWallPmtPositions(positions) {
   }
 }
 
-function buildLappdPositions() {
-  const layout = [
-    { id: "LAPPD01", angle: 58, y: 1.16 },
-    { id: "LAPPD02", angle: 111, y: 2.5 },
-    { id: "LAPPD03", angle: 196, y: 1.8 },
-    { id: "LAPPD04", angle: 266, y: 2.72 },
-    { id: "LAPPD05", angle: 326, y: 1.2 },
+function buildLappdPositions(existingPmtPositions) {
+  const positions = [];
+  const angleRows = [
+    [32, 62, 92, 122, 152, 182, 212, 242, 272, 302, 332],
+    [46, 76, 106, 136, 166, 196, 226, 256, 286, 316, 346],
+    [34, 64, 94, 124, 154, 184, 214, 244, 274, 304, 334],
+    [48, 78, 108, 138, 168, 198, 228, 258, 288, 318, 348],
+    [36, 66, 96, 126, 156, 186, 216, 246, 276, 306, 336],
+    [50, 80, 110, 140, 170, 200, 230, 260, 290, 320, 350],
   ];
+  const yRows = [0.48, 1.02, 1.56, 2.1, 2.64, 3.18];
+  let id = 1;
 
-  return layout.map((panel) => {
-    const angle = degreesToRadians(panel.angle);
-    return {
-      id: panel.id,
-      surface: "wall-lappd",
-      position: cylindricalWallPosition(angle, panel.y, DETECTOR.tank.radius - 0.045),
-      normal: inwardWallNormal(angle),
-      widthMeters: DETECTOR.lappd.width,
-      heightMeters: DETECTOR.lappd.height,
-    };
+  for (let row = 0; row < yRows.length; row += 1) {
+    for (const degrees of angleRows[row]) {
+      const angle = degreesToRadians(degrees);
+      if (isNearWallPmt(existingPmtPositions, angle, yRows[row])) {
+        continue;
+      }
+
+      positions.push({
+        id: `LAPPD${String(id).padStart(2, "0")}`,
+        surface: "wall-lappd",
+        position: cylindricalWallPosition(angle, yRows[row], DETECTOR.tank.radius - 0.045),
+        normal: inwardWallNormal(angle),
+        widthMeters: DETECTOR.lappd.width,
+        heightMeters: DETECTOR.lappd.height,
+      });
+      id += 1;
+    }
+  }
+
+  return positions;
+}
+
+function isNearWallPmt(existingPmtPositions, angle, y) {
+  return existingPmtPositions.some((pmt) => {
+    if (pmt.surface !== "wall-frame") {
+      return false;
+    }
+    const pmtAngle = Math.atan2(pmt.position.z, pmt.position.x);
+    const angularDistance = Math.abs(normalizeAngle(angle - pmtAngle));
+    const verticalDistance = Math.abs(y - pmt.position.y);
+
+    return angularDistance < 0.18 && verticalDistance < 0.34;
   });
+}
+
+function normalizeAngle(angle) {
+  return Math.atan2(Math.sin(angle), Math.cos(angle));
 }
 
 function getTopPmtLayout() {

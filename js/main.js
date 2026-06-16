@@ -4,11 +4,11 @@ import { initUI } from "./ui.js";
 const container = document.querySelector("#scene-container");
 const statusText = document.querySelector("#status-text");
 
-initUI({ statusText });
-
-initScene({
+const sceneDisplay = initScene({
   container,
   onReady: () => {
     statusText.textContent = "Detector view initialized";
   },
 });
+
+initUI({ statusText, sceneDisplay });

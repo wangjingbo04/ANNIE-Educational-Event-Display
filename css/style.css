@@ -93,15 +93,94 @@ body {
   color: var(--text);
 }
 
-.placeholder-block {
+#event-controls {
   display: grid;
-  min-height: 140px;
-  place-items: center;
-  border: 1px dashed #55626c;
+  gap: 14px;
+}
+
+.field {
+  display: grid;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.field select {
+  width: 100%;
+  min-height: 36px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: #10161a;
+  color: var(--text);
+  font: inherit;
+  padding: 7px 9px;
+}
+
+.button-row {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 8px;
+}
+
+.button-row button {
+  min-height: 36px;
+  border: 1px solid #4e606b;
+  border-radius: 6px;
+  background: #26333b;
+  color: var(--text);
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.button-row button:hover:not(:disabled) {
+  border-color: var(--accent);
+  background: #2f414a;
+}
+
+.button-row button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.readout-panel {
+  border: 1px solid var(--border);
   border-radius: 8px;
   background: var(--panel-strong);
-  color: var(--muted);
+  padding: 12px;
+}
+
+.readout-panel h3 {
+  margin: 0 0 10px;
+  color: var(--text);
   font-size: 0.9rem;
+}
+
+.readout-panel dl {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 7px 12px;
+  margin: 0;
+  font-size: 0.82rem;
+}
+
+.readout-panel dt {
+  color: var(--muted);
+}
+
+.readout-panel dd {
+  margin: 0;
+  color: var(--text);
+  text-align: right;
+}
+
+.truth-panel {
+  border-color: var(--warning);
+}
+
+.muted {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.85rem;
 }
 
 .status-panel {
