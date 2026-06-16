@@ -76,7 +76,9 @@ export function initScene({ container, onReady }) {
   const eventDisplay = createEventDisplay({
     scene,
     detectorGeometry,
+    lappdMeshes: detectorModel.lappdMeshes,
     mrdLayers: detectorModel.mrdLayers,
+    pmtMeshes: detectorModel.pmtMeshes,
   });
 
   const resizeObserver = new ResizeObserver(() => {
@@ -97,6 +99,9 @@ export function initScene({ container, onReady }) {
   return {
     showEvent: eventDisplay.showEvent,
     clearEvent: eventDisplay.clearEvent,
+    resetDetectorHits: eventDisplay.resetDetectorHits,
+    setCherenkovConeVisible: eventDisplay.setCherenkovConeVisible,
+    showDetectorHits: eventDisplay.showDetectorHits,
   };
 }
 
@@ -115,19 +120,21 @@ function addLighting(scene) {
 
 function addDetectorModel(scene) {
   const group = new THREE.Group();
+  const lappdMeshes = new Map();
   const mrdLayers = [];
+  const pmtMeshes = new Map();
 
   addWaterTank(group);
   addCapSupportArrays(group);
   addWallPmtSupportFrames(group);
-  addPmts(group);
-  addLappds(group);
+  addPmts(group, pmtMeshes);
+  addLappds(group, lappdMeshes);
   addMrd(group, mrdLayers);
   addDetectorAxes(group);
 
   scene.add(group);
 
-  return { mrdLayers };
+  return { lappdMeshes, mrdLayers, pmtMeshes };
 }
 
 function addWaterTank(group) {
@@ -208,7 +215,7 @@ function addCapSupportArrays(group) {
   }
 }
 
-function addPmts(group) {
+function addPmts(group, pmtMeshes) {
   const materials = {
     wall: makePmtMaterials(0x1359ff, 0xaed2ff, 0x071c63),
     top: makePmtMaterials(0xff4f4f, 0xffb0a0, 0x601818),
@@ -223,11 +230,11 @@ function addPmts(group) {
     pmtGroup.position.copy(pmt.position);
     pmtGroup.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), pmt.normal);
 
-    const body = new THREE.Mesh(bodyGeometry, materials[materialKey].body);
+    const body = new THREE.Mesh(bodyGeometry, materials[materialKey].body.clone());
     body.rotation.x = Math.PI / 2;
     pmtGroup.add(body);
 
-    const face = new THREE.Mesh(faceGeometry, materials[materialKey].face);
+    const face = new THREE.Mesh(faceGeometry, materials[materialKey].face.clone());
     face.position.z = 0.058;
     pmtGroup.add(face);
 
@@ -238,6 +245,7 @@ function addPmts(group) {
       surface: pmt.surface,
     };
     group.add(pmtGroup);
+    pmtMeshes.set(pmt.id, pmtGroup);
   }
 }
 
@@ -257,7 +265,7 @@ function makePmtMaterials(bodyColor, faceColor, emissiveColor) {
   };
 }
 
-function addLappds(group) {
+function addLappds(group, lappdMeshes) {
   const panelMaterial = new THREE.MeshStandardMaterial({
     color: 0x0c5f25,
     metalness: 0.15,
@@ -281,16 +289,16 @@ function addLappds(group) {
     panelGroup.position.copy(lappd.position);
     panelGroup.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), lappd.normal);
 
-    const panel = new THREE.Mesh(panelGeometry, panelMaterial);
+    const panel = new THREE.Mesh(panelGeometry, panelMaterial.clone());
     panelGroup.add(panel);
 
-    const window = new THREE.Mesh(windowGeometry, windowMaterial);
+    const window = new THREE.Mesh(windowGeometry, windowMaterial.clone());
     window.position.z = DETECTOR.lappd.depth / 2 + 0.002;
     panelGroup.add(window);
 
     const frame = new THREE.Mesh(
       new THREE.BoxGeometry(DETECTOR.lappd.width * 1.15, DETECTOR.lappd.height * 1.15, DETECTOR.lappd.depth * 0.35),
-      frameMaterial,
+      frameMaterial.clone(),
     );
     frame.position.z = -DETECTOR.lappd.depth * 0.12;
     panelGroup.add(frame);
@@ -302,6 +310,7 @@ function addLappds(group) {
       surface: lappd.surface,
     };
     group.add(panelGroup);
+    lappdMeshes.set(lappd.id, panelGroup);
   }
 }
 

@@ -1,4 +1,5 @@
 import { generateEvent, getEventOptions } from "./eventGenerator.js";
+import { simulateDetectorResponse } from "./detectorResponse.js";
 
 export function initUI({ statusText, sceneDisplay }) {
   const controlsRoot = document.querySelector("#event-controls");
@@ -31,6 +32,14 @@ export function initUI({ statusText, sceneDisplay }) {
       <button id="reset-event" type="button">Reset Event</button>
       <button id="reveal-truth" type="button" disabled>Reveal Truth</button>
     </div>
+    <label class="toggle-field">
+      <input id="show-cone" type="checkbox" checked />
+      <span>Show Cherenkov Cone</span>
+    </label>
+    <div class="button-row">
+      <button id="show-pmt-hits" type="button" disabled>Show PMT Hits</button>
+      <button id="reset-pmt-hits" type="button" disabled>Reset PMT Hits</button>
+    </div>
   `;
 
   const energySelect = controlsRoot.querySelector("#neutrino-energy");
@@ -39,6 +48,9 @@ export function initUI({ statusText, sceneDisplay }) {
   const runButton = controlsRoot.querySelector("#run-event");
   const resetButton = controlsRoot.querySelector("#reset-event");
   const revealButton = controlsRoot.querySelector("#reveal-truth");
+  const coneToggle = controlsRoot.querySelector("#show-cone");
+  const showPmtHitsButton = controlsRoot.querySelector("#show-pmt-hits");
+  const resetPmtHitsButton = controlsRoot.querySelector("#reset-pmt-hits");
 
   renderNoEvent();
 
@@ -48,11 +60,14 @@ export function initUI({ statusText, sceneDisplay }) {
       eventType: eventTypeSelect.value,
       noiseLevel: noiseSelect.value,
     });
-    sceneDisplay.showEvent(currentEvent);
+    currentEvent.response = simulateDetectorResponse(currentEvent);
+    sceneDisplay.showEvent(currentEvent, { showCone: coneToggle.checked });
     renderObservables(currentEvent);
     truthRoot.hidden = true;
     truthRoot.innerHTML = "";
     revealButton.disabled = false;
+    showPmtHitsButton.disabled = false;
+    resetPmtHitsButton.disabled = false;
     statusText.textContent = "Event generated: truth hidden";
   });
 
@@ -60,6 +75,8 @@ export function initUI({ statusText, sceneDisplay }) {
     currentEvent = null;
     sceneDisplay.clearEvent();
     revealButton.disabled = true;
+    showPmtHitsButton.disabled = true;
+    resetPmtHitsButton.disabled = true;
     truthRoot.hidden = true;
     truthRoot.innerHTML = "";
     renderNoEvent();
@@ -74,6 +91,27 @@ export function initUI({ statusText, sceneDisplay }) {
     truthRoot.hidden = false;
     statusText.textContent = "Truth revealed";
   });
+
+  coneToggle.addEventListener("change", () => {
+    if (!currentEvent) {
+      return;
+    }
+    sceneDisplay.setCherenkovConeVisible(currentEvent, coneToggle.checked);
+    statusText.textContent = coneToggle.checked ? "Cherenkov cone shown" : "Cherenkov cone hidden";
+  });
+
+  showPmtHitsButton.addEventListener("click", () => {
+    if (!currentEvent?.response) {
+      return;
+    }
+    sceneDisplay.showDetectorHits(currentEvent.response);
+    statusText.textContent = "PMT and LAPPD hits shown";
+  });
+
+  resetPmtHitsButton.addEventListener("click", () => {
+    sceneDisplay.resetDetectorHits();
+    statusText.textContent = "PMT and LAPPD hit display reset";
+  });
 }
 
 function renderNoEvent() {
@@ -84,17 +122,28 @@ function renderNoEvent() {
 }
 
 function renderObservables(event) {
+  const response = event.response;
   document.querySelector("#student-observables").innerHTML = `
-    <h3>Student Observables</h3>
+    <h3>Event Summary</h3>
     <dl>
       <dt>Event type</dt>
       <dd>Hidden</dd>
+      <dt>PMT hits</dt>
+      <dd>${response.totals.pmtHits}</dd>
+      <dt>Total PMT charge</dt>
+      <dd>${response.totals.pmtCharge.toFixed(1)}</dd>
+      <dt>LAPPD hits</dt>
+      <dd>${response.totals.lappdHits}</dd>
+      <dt>Muon angle</dt>
+      <dd>${event.truth.muonAngleDegrees === null ? "Not shown" : `${event.truth.muonAngleDegrees.toFixed(1)} deg`}</dd>
+      <dt>Muon track length</dt>
+      <dd>${event.truth.muonTrackLengthWaterMeters.toFixed(2)} m</dd>
+      <dt>Water path length</dt>
+      <dd>${event.observables.roughWaterPathLengthMeters.toFixed(1)} m</dd>
       <dt>Visible topology</dt>
       <dd>${event.observables.visibleTopology}</dd>
       <dt>Visible MRD layers crossed</dt>
       <dd>${event.observables.visibleMrdLayersCrossed}</dd>
-      <dt>Rough water path length</dt>
-      <dd>${event.observables.roughWaterPathLengthMeters.toFixed(1)} m</dd>
       <dt>Noise level</dt>
       <dd>${capitalize(event.observables.noiseLevel)}</dd>
     </dl>
