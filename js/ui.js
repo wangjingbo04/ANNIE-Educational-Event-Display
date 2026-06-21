@@ -1,7 +1,7 @@
 import { generateEvent, getEventOptions } from "./eventGenerator.js";
 import { simulateDetectorResponse } from "./detectorResponse.js";
 
-export function initUI({ statusText, sceneDisplay }) {
+export function initUI({ statusText, sceneDisplay, eventDisplay2D, setView }) {
   const controlsRoot = document.querySelector("#event-controls");
   const observablesRoot = document.querySelector("#student-observables");
   const truthRoot = document.querySelector("#truth-readout");
@@ -10,6 +10,13 @@ export function initUI({ statusText, sceneDisplay }) {
   let currentMode = "teacher";
 
   controlsRoot.innerHTML = `
+    <label class="field">
+      <span>View</span>
+      <select id="view-mode">
+        <option value="3d">3D View</option>
+        <option value="event-display">Event Display View</option>
+      </select>
+    </label>
     <label class="field">
       <span>Display mode</span>
       <select id="display-mode">
@@ -57,6 +64,7 @@ export function initUI({ statusText, sceneDisplay }) {
   const runButton = controlsRoot.querySelector("#run-event");
   const resetButton = controlsRoot.querySelector("#reset-event");
   const revealButton = controlsRoot.querySelector("#reveal-truth");
+  const viewSelect = controlsRoot.querySelector("#view-mode");
   const modeSelect = controlsRoot.querySelector("#display-mode");
   const coneToggle = controlsRoot.querySelector("#show-cone");
   const showPmtHitsButton = controlsRoot.querySelector("#show-pmt-hits");
@@ -76,6 +84,7 @@ export function initUI({ statusText, sceneDisplay }) {
     truthRoot.innerHTML = "";
     revealButton.disabled = false;
     applyDisplayMode();
+    eventDisplay2D.showEvent(currentEvent);
     renderObservables(currentEvent, currentMode);
     statusText.textContent = currentMode === "teacher"
       ? "Event generated: truth track and photons shown"
@@ -85,6 +94,7 @@ export function initUI({ statusText, sceneDisplay }) {
   resetButton.addEventListener("click", () => {
     currentEvent = null;
     sceneDisplay.clearEvent();
+    eventDisplay2D.clear();
     revealButton.disabled = true;
     showPmtHitsButton.disabled = true;
     resetPmtHitsButton.disabled = true;
@@ -121,12 +131,22 @@ export function initUI({ statusText, sceneDisplay }) {
     }
 
     applyDisplayMode();
+    eventDisplay2D.showEvent(currentEvent);
     renderObservables(currentEvent, currentMode);
     statusText.textContent = currentMode === "teacher"
       ? "Teacher Mode: truth track and photons shown"
       : "Student Mode: PMT and MRD hits shown";
   });
 
+  viewSelect.addEventListener("change", () => {
+    setView(viewSelect.value);
+    if (currentEvent) {
+      eventDisplay2D.showEvent(currentEvent);
+    }
+    statusText.textContent = viewSelect.value === "event-display"
+      ? "Event Display View selected"
+      : "3D View selected";
+  });
   showPmtHitsButton.addEventListener("click", () => {
     if (!currentEvent?.response) {
       return;

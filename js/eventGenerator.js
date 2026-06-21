@@ -242,6 +242,7 @@ function getCrossedMrdLayers(start, end, direction) {
       paddleIndex,
       orientation,
       hitPointMeters: vectorToArray(hitPoint),
+      hitTimeNs: round(distanceToLayer / 0.299792458, 2),
     });
   }
 
