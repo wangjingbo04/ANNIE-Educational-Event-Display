@@ -28,12 +28,10 @@ export function createEventDisplay({ detectorGeometry, scene, mrdLayers, pmtMesh
       addVertex(eventGroup, event.display.vertex);
     }
 
-    if (showTruthTracks && event.display.muonTrack) {
-      addSolidLine(eventGroup, event.display.muonTrack.start, event.display.muonTrack.end, 0xff8a00, 0.045);
-    }
-
-    if (showTruthTracks && event.display.mrdTrack) {
-      addSolidLine(eventGroup, event.display.mrdTrack.start, event.display.mrdTrack.end, 0xff9f1a, 0.055);
+    if (showTruthTracks && event.display.muonFullTrack) {
+      addSolidLine(eventGroup, event.display.muonFullTrack.start, event.display.muonFullTrack.end, 0xff8a00, 0.024);
+    } else if (showTruthTracks && event.display.muonTrack) {
+      addSolidLine(eventGroup, event.display.muonTrack.start, event.display.muonTrack.end, 0xff8a00, 0.024);
     }
 
     if (showTruthTracks && event.display.cosmicTrack) {
@@ -148,86 +146,67 @@ function addCherenkovCone(group, event, tank) {
     return;
   }
 
-  const geometry = createContainedCherenkovConeGeometry(source, direction, trackLength, tank);
-  const material = new THREE.MeshStandardMaterial({
-    color: 0xffe45c,
-    emissive: 0xffb000,
-    emissiveIntensity: 0.42,
+  const geometry = createCherenkovPhotonGeometry(source, direction, trackLength, tank);
+  const material = new THREE.PointsMaterial({
+    color: 0x55cfff,
+    size: 0.035,
     transparent: true,
-    opacity: 0.24,
-    side: THREE.DoubleSide,
+    opacity: 0.82,
     depthWrite: false,
+    blending: THREE.AdditiveBlending,
   });
-  const cone = new THREE.Mesh(geometry, material);
-  group.add(cone);
+  const photons = new THREE.Points(geometry, material);
+  photons.name = "contained Cherenkov photon particles";
+  group.add(photons);
 }
 
-function createContainedCherenkovConeGeometry(source, axis, length, tank) {
-  const radialSegments = 72;
-  const lengthSegments = 36;
+function createCherenkovPhotonGeometry(source, axis, length, tank) {
+  const emissionCount = 52;
+  const azimuthCount = 14;
+  const stepsPerPhoton = 4;
   const theta = THREE.MathUtils.degToRad(CHERENKOV_ANGLE_DEGREES);
   const [u, v] = makePerpendicularBasis(axis);
   const positions = [];
-  const indices = [];
 
-  for (let i = 0; i <= lengthSegments; i += 1) {
-    const fraction = i / lengthSegments;
-    const axisDistance = length * fraction;
-    const axisPoint = source.clone().add(axis.clone().multiplyScalar(axisDistance));
-    const idealRadius = Math.tan(theta) * axisDistance;
-    const exitTaper = Math.max(0, 1 - fraction ** 6);
-
-    for (let j = 0; j < radialSegments; j += 1) {
-      const phi = (j / radialSegments) * Math.PI * 2;
-      const radialDirection = u.clone().multiplyScalar(Math.cos(phi)).add(v.clone().multiplyScalar(Math.sin(phi))).normalize();
-      const containedRadius = findContainedConeRadius(axisPoint, radialDirection, idealRadius * exitTaper, tank);
-      const point = axisPoint.clone().add(radialDirection.multiplyScalar(containedRadius));
-      positions.push(point.x, point.y, point.z);
+  for (let i = 0; i < emissionCount; i += 1) {
+    const emissionFraction = i / (emissionCount - 1);
+    const emissionPoint = source.clone().add(axis.clone().multiplyScalar(length * emissionFraction));
+    if (!isPointInsideTank(emissionPoint, tank)) {
+      continue;
     }
-  }
 
-  for (let i = 0; i < lengthSegments; i += 1) {
-    for (let j = 0; j < radialSegments; j += 1) {
-      const a = i * radialSegments + j;
-      const b = i * radialSegments + ((j + 1) % radialSegments);
-      const c = (i + 1) * radialSegments + j;
-      const d = (i + 1) * radialSegments + ((j + 1) % radialSegments);
-      indices.push(a, c, b);
-      indices.push(b, c, d);
+    for (let j = 0; j < azimuthCount; j += 1) {
+      const phi = ((j + (i % 2) * 0.5) / azimuthCount) * Math.PI * 2;
+      const radial = u.clone().multiplyScalar(Math.cos(phi)).add(v.clone().multiplyScalar(Math.sin(phi))).normalize();
+      const photonDirection = axis.clone().multiplyScalar(Math.cos(theta)).add(radial.multiplyScalar(Math.sin(theta))).normalize();
+      const maxDistance = distanceInsideTank(emissionPoint, photonDirection, tank, 1.35);
+
+      for (let step = 1; step <= stepsPerPhoton; step += 1) {
+        const distance = maxDistance * (step / stepsPerPhoton);
+        const point = emissionPoint.clone().add(photonDirection.clone().multiplyScalar(distance));
+        if (isPointInsideTank(point, tank)) {
+          positions.push(point.x, point.y, point.z);
+        }
+      }
     }
   }
 
   const geometry = new THREE.BufferGeometry();
   geometry.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
-  geometry.setIndex(indices);
-  geometry.computeVertexNormals();
-
   return geometry;
 }
 
-function makePerpendicularBasis(axis) {
-  const reference = Math.abs(axis.y) < 0.92 ? new THREE.Vector3(0, 1, 0) : new THREE.Vector3(0, 0, 1);
-  const u = new THREE.Vector3().crossVectors(axis, reference).normalize();
-  const v = new THREE.Vector3().crossVectors(axis, u).normalize();
-
-  return [u, v];
-}
-
-function findContainedConeRadius(origin, radialDirection, desiredRadius, tank) {
-  if (desiredRadius <= 0) {
-    return 0;
-  }
-
-  const desiredPoint = origin.clone().add(radialDirection.clone().multiplyScalar(desiredRadius));
-  if (isPointInsideTank(desiredPoint, tank)) {
-    return desiredRadius;
-  }
-
+function distanceInsideTank(origin, direction, tank, maximumDistance) {
   let low = 0;
-  let high = desiredRadius;
-  for (let i = 0; i < 16; i += 1) {
+  let high = maximumDistance;
+  const farPoint = origin.clone().add(direction.clone().multiplyScalar(high));
+  if (isPointInsideTank(farPoint, tank)) {
+    return high;
+  }
+
+  for (let i = 0; i < 18; i += 1) {
     const mid = (low + high) / 2;
-    const point = origin.clone().add(radialDirection.clone().multiplyScalar(mid));
+    const point = origin.clone().add(direction.clone().multiplyScalar(mid));
     if (isPointInsideTank(point, tank)) {
       low = mid;
     } else {
@@ -236,6 +215,14 @@ function findContainedConeRadius(origin, radialDirection, desiredRadius, tank) {
   }
 
   return low;
+}
+
+function makePerpendicularBasis(axis) {
+  const reference = Math.abs(axis.y) < 0.92 ? new THREE.Vector3(0, 1, 0) : new THREE.Vector3(0, 0, 1);
+  const u = new THREE.Vector3().crossVectors(axis, reference).normalize();
+  const v = new THREE.Vector3().crossVectors(axis, u).normalize();
+
+  return [u, v];
 }
 
 function isPointInsideTank(point, tank) {
@@ -247,7 +234,6 @@ function isPointInsideTank(point, tank) {
     && point.y >= center.y - halfHeight - 0.000001
     && point.y <= center.y + halfHeight + 0.000001;
 }
-
 function lightMrdLayers(mrdLayers, crossedLayers) {
   for (const hit of crossedLayers) {
     const layer = mrdLayers[hit.layerIndex];

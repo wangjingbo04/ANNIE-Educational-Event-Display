@@ -42,7 +42,7 @@ export function initUI({ statusText, sceneDisplay }) {
     </div>
     <label class="toggle-field">
       <input id="show-cone" type="checkbox" checked />
-      <span>Show Cherenkov Cone</span>
+      <span>Show Cherenkov Photons</span>
     </label>
     <p class="control-note">ANNIE MRD: 11 alternating scintillator layers, 6 horizontal and 5 vertical, interleaved with iron absorber plates. It registers muon track hits, not Cherenkov light.</p>
     <div class="button-row">
@@ -78,7 +78,7 @@ export function initUI({ statusText, sceneDisplay }) {
     applyDisplayMode();
     renderObservables(currentEvent, currentMode);
     statusText.textContent = currentMode === "teacher"
-      ? "Event generated: truth track and cone shown"
+      ? "Event generated: truth track and photons shown"
       : "Event generated: student detector response shown";
   });
 
@@ -109,7 +109,7 @@ export function initUI({ statusText, sceneDisplay }) {
       return;
     }
     sceneDisplay.setCherenkovConeVisible(currentEvent, coneToggle.checked);
-    statusText.textContent = coneToggle.checked ? "Cherenkov cone shown" : "Cherenkov cone hidden";
+    statusText.textContent = coneToggle.checked ? "Cherenkov photons shown" : "Cherenkov photons hidden";
   });
 
   modeSelect.addEventListener("change", () => {
@@ -123,7 +123,7 @@ export function initUI({ statusText, sceneDisplay }) {
     applyDisplayMode();
     renderObservables(currentEvent, currentMode);
     statusText.textContent = currentMode === "teacher"
-      ? "Teacher Mode: truth track and cone shown"
+      ? "Teacher Mode: truth track and photons shown"
       : "Student Mode: PMT and MRD hits shown";
   });
 

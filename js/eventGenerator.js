@@ -87,6 +87,10 @@ export function generateEvent({ neutrinoEnergy, eventType, noiseLevel }) {
         start: vectorToArray(vertex),
         end: vectorToArray(waterExitPoint),
       },
+      muonFullTrack: {
+        start: vectorToArray(vertex),
+        end: vectorToArray(mrd.length > 0 ? mrd.end : waterExitPoint),
+      },
       mrdTrack: mrd.length > 0 ? {
         start: vectorToArray(mrd.start),
         end: vectorToArray(mrd.end),

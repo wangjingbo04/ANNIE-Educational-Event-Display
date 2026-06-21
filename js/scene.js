@@ -426,6 +426,9 @@ function addMrd(group, mrdLayers) {
     color: 0x171a1c,
     metalness: 0.55,
     roughness: 0.36,
+    transparent: true,
+    opacity: 0.34,
+    depthWrite: false,
   });
   const scintillatorMaterial = new THREE.MeshStandardMaterial({
     color: 0x2b8fa3,
