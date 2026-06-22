@@ -46,6 +46,11 @@ const DETECTOR = {
 };
 
 const pmtPositions = buildPmtPositions();
+const DEFAULT_CAMERA_STATE = {
+  position: new THREE.Vector3(-8, 4, -12),
+  target: new THREE.Vector3(0, 1.55, 1.35),
+  zoom: 1,
+};
 
 export const detectorGeometry = {
   tank: {
@@ -118,7 +123,9 @@ export function initScene({ container, onReady }) {
   scene.background = new THREE.Color(0x0c0f12);
 
   const camera = new THREE.PerspectiveCamera(55, 1, 0.1, 1000);
-  camera.position.set(6.1, 4.6, 6.4);
+  camera.position.copy(DEFAULT_CAMERA_STATE.position);
+  camera.zoom = DEFAULT_CAMERA_STATE.zoom;
+  camera.updateProjectionMatrix();
 
   const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
@@ -128,7 +135,9 @@ export function initScene({ container, onReady }) {
 
   const controls = new OrbitControls(camera, renderer.domElement);
   controls.enableDamping = true;
-  controls.target.set(1.35, 1.65, 0);
+  controls.target.copy(DEFAULT_CAMERA_STATE.target);
+
+  scene.defaultCameraState = cloneCameraState(DEFAULT_CAMERA_STATE);
 
   addLighting(scene);
   const detectorModel = addDetectorModel(scene);
@@ -145,6 +154,10 @@ export function initScene({ container, onReady }) {
   });
   resizeObserver.observe(container);
 
+  function resetView() {
+    animateCameraToState(camera, controls, scene.defaultCameraState);
+  }
+
   function animate() {
     requestAnimationFrame(animate);
     controls.update();
@@ -152,6 +165,7 @@ export function initScene({ container, onReady }) {
   }
 
   resizeRenderer(container, camera, renderer);
+  renderer.domElement.addEventListener("dblclick", resetView);
   animate();
   onReady?.();
 
@@ -161,6 +175,7 @@ export function initScene({ container, onReady }) {
     resetDetectorHits: eventDisplay.resetDetectorHits,
     setCherenkovConeVisible: eventDisplay.setCherenkovConeVisible,
     showDetectorHits: eventDisplay.showDetectorHits,
+    resetView,
     captureImage: () => {
       controls.update();
       renderer.render(scene, camera);
@@ -169,6 +184,38 @@ export function initScene({ container, onReady }) {
   };
 }
 
+
+function animateCameraToState(camera, controls, state) {
+  const startPosition = camera.position.clone();
+  const startTarget = controls.target.clone();
+  const startZoom = camera.zoom;
+  const durationMs = 620;
+  const startTime = performance.now();
+
+  function step(now) {
+    const progress = Math.min((now - startTime) / durationMs, 1);
+    const eased = 1 - (1 - progress) ** 3;
+    camera.position.lerpVectors(startPosition, state.position, eased);
+    controls.target.lerpVectors(startTarget, state.target, eased);
+    camera.zoom = startZoom + (state.zoom - startZoom) * eased;
+    camera.updateProjectionMatrix();
+    controls.update();
+
+    if (progress < 1) {
+      requestAnimationFrame(step);
+    }
+  }
+
+  requestAnimationFrame(step);
+}
+
+function cloneCameraState(state) {
+  return {
+    position: state.position.clone(),
+    target: state.target.clone(),
+    zoom: state.zoom,
+  };
+}
 function addLighting(scene) {
   const ambientLight = new THREE.AmbientLight(0xffffff, 0.45);
   scene.add(ambientLight);

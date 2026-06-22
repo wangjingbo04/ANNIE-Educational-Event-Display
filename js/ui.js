@@ -48,6 +48,7 @@ export function initUI({ statusText, sceneDisplay, eventDisplay2D, setView }) {
       <button id="reset-event" type="button">Reset Event</button>
       <button id="reveal-truth" type="button" disabled>Reveal Truth</button>
       <button id="export-pdf" type="button">Export PDF</button>
+      <button id="reset-view" type="button">Reset View</button>
     </div>
     <label class="toggle-field">
       <input id="show-cone" type="checkbox" checked />
@@ -67,6 +68,7 @@ export function initUI({ statusText, sceneDisplay, eventDisplay2D, setView }) {
   const resetButton = controlsRoot.querySelector("#reset-event");
   const revealButton = controlsRoot.querySelector("#reveal-truth");
   const exportPdfButton = controlsRoot.querySelector("#export-pdf");
+  const resetViewButton = controlsRoot.querySelector("#reset-view");
   const viewSelect = controlsRoot.querySelector("#view-mode");
   const modeSelect = controlsRoot.querySelector("#display-mode");
   const coneToggle = controlsRoot.querySelector("#show-cone");
@@ -150,6 +152,11 @@ export function initUI({ statusText, sceneDisplay, eventDisplay2D, setView }) {
       ? "Event Display View selected"
       : "3D View selected";
   });
+  resetViewButton.addEventListener("click", () => {
+    sceneDisplay.resetView();
+    statusText.textContent = "3D view reset";
+  });
+
   exportPdfButton.addEventListener("click", () => {
     const exported = exportCurrentViewToPdf({
       view: viewSelect.value,
