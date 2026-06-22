@@ -1,7 +1,7 @@
 const SVG_NS = "http://www.w3.org/2000/svg";
 const WALL_WIDTH = 640;
 const WALL_HEIGHT = 300;
-const CAP_SIZE = 210;
+const CAP_SIZE = 180;
 const MRD_WIDTH = 420;
 const MRD_HEIGHT = 250;
 
@@ -43,26 +43,22 @@ export function initEventDisplay2D({ container, detectorGeometry }) {
             <div><dt>MRD layers</dt><dd>${event.observables.visibleMrdLayersCrossed}</dd></div>
           </dl>
         </header>
-        <div class="event-display-grid">
-          <section class="event-display-card event-display-wide">
-            <h3>Flattened Tank PMT Charge Map</h3>
-            <div id="pmt-wall-map" class="event-svg-wrap"></div>
+        <div class="event-display-figure">
+          <section class="event-pmt-block" aria-label="ANNIE PMT charge display">
+            <h3>ANNIE PMT Charge Display</h3>
+            <div id="top-cap-map" class="event-svg-wrap event-cap-slot"></div>
+            <div id="pmt-wall-map" class="event-svg-wrap event-wall-slot"></div>
+            <div id="bottom-cap-map" class="event-svg-wrap event-cap-slot"></div>
           </section>
-          <section class="event-display-card">
-            <h3>Top Cap PMTs</h3>
-            <div id="top-cap-map" class="event-svg-wrap"></div>
-          </section>
-          <section class="event-display-card">
-            <h3>Bottom Cap PMTs</h3>
-            <div id="bottom-cap-map" class="event-svg-wrap"></div>
-          </section>
-          <section class="event-display-card">
-            <h3>MRD Side View</h3>
-            <div id="mrd-side-map" class="event-svg-wrap"></div>
-          </section>
-          <section class="event-display-card">
-            <h3>MRD Top View</h3>
-            <div id="mrd-top-map" class="event-svg-wrap"></div>
+          <section class="event-mrd-row" aria-label="MRD event projections">
+            <figure class="event-mrd-panel">
+              <figcaption>MRD Side View</figcaption>
+              <div id="mrd-side-map" class="event-svg-wrap"></div>
+            </figure>
+            <figure class="event-mrd-panel">
+              <figcaption>MRD Top View</figcaption>
+              <div id="mrd-top-map" class="event-svg-wrap"></div>
+            </figure>
           </section>
         </div>
       </div>
@@ -131,7 +127,7 @@ export function initEventDisplay2D({ container, detectorGeometry }) {
   function renderCapMap(root, event, surface) {
     const svg = makeSvg(CAP_SIZE, CAP_SIZE);
     const center = CAP_SIZE / 2;
-    const radius = 78;
+    const radius = 64;
     const charges = chargeMap(event);
     const chargeMax = getChargeMax(charges);
 
@@ -220,7 +216,7 @@ export function initEventDisplay2D({ container, detectorGeometry }) {
       }
     }
 
-    addText(svg, MRD_WIDTH - 20, 22, "MRD hit time", "event-small-label", "end");
+    renderTimeScale(svg, MRD_WIDTH - 40, 30, 14, 74, hitMaxTime);
   }
 
   function drawTrack(svg, event, sx, sy, projection) {
@@ -287,6 +283,17 @@ function renderChargeScale(svg, x, y, width, height, chargeMax) {
   addText(svg, x + width / 2, y + height + 24, "PMT Hit PE", "event-small-label", "middle");
 }
 
+function renderTimeScale(svg, x, y, width, height, maxTime) {
+  const steps = 18;
+  for (let i = 0; i < steps; i += 1) {
+    const fraction = i / (steps - 1);
+    const stepY = y + (1 - fraction) * height;
+    addRect(svg, x, stepY, width, height / steps + 1, timeColor(fraction * maxTime, maxTime));
+  }
+  addText(svg, x + width / 2, y - 8, "MRD hit time", "event-small-label", "middle");
+  addText(svg, x + width + 7, y + 4, `${maxTime.toFixed(0)} ns`, "event-small-label", "start");
+  addText(svg, x + width + 7, y + height, "0", "event-small-label", "start");
+}
 function chargeColor(charge, maxCharge) {
   if (charge <= 0) {
     return "#25313a";
