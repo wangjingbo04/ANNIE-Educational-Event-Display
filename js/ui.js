@@ -53,7 +53,7 @@ export function initUI({ statusText, sceneDisplay, eventDisplay2D, setView }) {
       <input id="show-cone" type="checkbox" checked />
       <span>Show Cherenkov Photons</span>
     </label>
-    <p class="control-note">MRD: 11 alternating vertical/horizontal scintillator layers, 306 paddles total, interleaved with 11 iron absorber layers. It reconstructs the range, energy, and momentum of outgoing muons stopping in the MRD.</p>
+    <p class="control-note">MRD: 11 alternating vertical/horizontal scintillator layers, 306 paddles total, interleaved with 11 iron absorber layers. It reconstructs the range, energy, and momentum of outgoing muons stopping in the MRD. Toy model: most muons stop in the MRD; only high-energy muons may punch through.</p>
     <div class="button-row">
       <button id="show-pmt-hits" type="button" disabled>Show PMT Hits</button>
       <button id="reset-pmt-hits" type="button" disabled>Reset PMT Hits</button>
@@ -265,7 +265,7 @@ function renderTruth(event) {
       <dt>True MRD track length</dt>
       <dd>${truth.projectedMrdTrackLengthMeters.toFixed(2)} m</dd>
       <dt>MRD stop status</dt>
-      <dd>${truth.mrdStopped ? "Stopped in MRD" : truth.projectedMrdTrackLengthMeters > 0 ? "Exited MRD" : "Did not reach MRD"}</dd>
+      <dd>${truth.mrdStopped ? "Stopped in MRD" : truth.projectedMrdTrackLengthMeters > 0 ? "Punch-through" : "Did not reach MRD"}</dd>
     </dl>
   `;
 }

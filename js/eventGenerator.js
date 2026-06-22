@@ -43,8 +43,7 @@ export function generateEvent({ neutrinoEnergy, eventType, noiseLevel }) {
   const waterExit = calculateRayCylinderIntersection(vertex, muonDirection, detectorGeometry.tank);
   const waterTrackLength = waterExit.distance;
   const waterExitPoint = waterExit.point;
-  const totalMuonTrackLength = estimateMuonTrackLength(muonEnergy);
-  const mrd = estimateMrdSegment(waterExitPoint, muonDirection, totalMuonTrackLength - waterTrackLength);
+  const mrd = estimateMrdSegment(waterExitPoint, muonDirection, muonEnergy, waterTrackLength);
   const neutronMultiplicity = randomInteger(...NEUTRON_RANGES[eventType]);
 
   return {
@@ -74,7 +73,7 @@ export function generateEvent({ neutrinoEnergy, eventType, noiseLevel }) {
       crossedMrdLayers: mrd.crossedLayers,
       visibleMrdLayersCrossed: mrd.crossedLayers.length,
       estimatedMrdTrackLengthMeters: round(mrd.length, 2),
-      mrdStopStatus: mrd.stopped ? "Stopped in MRD" : mrd.length > 0 ? "Exited MRD" : "Did not reach MRD",
+      mrdStopStatus: mrd.stopped ? "Stopped in MRD" : mrd.length > 0 ? "Punch-through" : "Did not reach MRD",
       noiseLevel,
     },
     display: {
@@ -184,31 +183,56 @@ function randomMuonDirection(angleDegrees) {
   ).normalize();
 }
 
-function estimateMuonTrackLength(muonEnergyGeV) {
-  return 3.2 + 5.6 * muonEnergyGeV;
-}
 
-function estimateMrdSegment(waterExitPoint, direction, remainingRange) {
-  if (direction.z <= 0.05 || remainingRange <= 0) {
+function estimateMrdSegment(waterExitPoint, direction, muonEnergyGeV, waterTrackLength) {
+  if (direction.z <= 0.05) {
     return { length: 0, crossedLayers: [], start: null, end: null, stopped: false };
   }
 
   const mrdStartZ = detectorGeometry.mrd.startZMeters;
   const distanceToMrd = (mrdStartZ - waterExitPoint.z) / direction.z;
-  if (distanceToMrd < 0 || distanceToMrd > remainingRange + 0.25) {
+  if (distanceToMrd < 0) {
     return { length: 0, crossedLayers: [], start: null, end: null, stopped: false };
   }
 
-  const start = waterExitPoint.clone().add(direction.clone().multiplyScalar(Math.max(distanceToMrd, 0)));
+  const start = waterExitPoint.clone().add(direction.clone().multiplyScalar(distanceToMrd));
+  if (!isInsideMrdFace(start)) {
+    return { length: 0, crossedLayers: [], start: null, end: null, stopped: false };
+  }
+
+  const energyEnteringMrd = estimateMuonEnergyEnteringMrd(muonEnergyGeV, waterTrackLength, distanceToMrd);
+  if (energyEnteringMrd <= 0.05) {
+    return { length: 0, crossedLayers: [], start: null, end: null, stopped: false };
+  }
+
   const maxMrdPath = detectorGeometry.mrd.totalDepthMeters / Math.max(direction.z, 0.05);
-  const availableInMrd = remainingRange - Math.max(distanceToMrd, 0);
-  const maxLength = Math.min(availableInMrd, maxMrdPath);
-  const length = Math.max(0, maxLength);
+  const mrdRange = estimateMrdRange(energyEnteringMrd);
+  const length = Math.min(mrdRange, maxMrdPath);
   const end = start.clone().add(direction.clone().multiplyScalar(length));
   const crossedLayers = getCrossedMrdLayers(start, end, direction);
-  const stopped = availableInMrd < maxMrdPath;
+  const stopped = mrdRange < maxMrdPath;
 
-  return { length, crossedLayers, start, end, stopped };
+  return {
+    length,
+    crossedLayers,
+    start,
+    end,
+    stopped,
+    energyEnteringMrdGeV: energyEnteringMrd,
+    mrdRangeMeters: mrdRange,
+  };
+}
+
+function estimateMuonEnergyEnteringMrd(muonEnergyGeV, waterTrackLength, distanceToMrd) {
+  const waterLoss = 0.055 * waterTrackLength;
+  const airGapLoss = 0.018 * Math.max(distanceToMrd, 0);
+  return Math.max(0.04, muonEnergyGeV - waterLoss - airGapLoss);
+}
+
+function estimateMrdRange(energyEnteringMrdGeV) {
+  const nominalRange = 0.8 + 3.0 * (energyEnteringMrdGeV - 0.3);
+  const fluctuatedRange = nominalRange * randomBetween(0.8, 1.2);
+  return Math.max(0.3, fluctuatedRange);
 }
 
 function getCrossedMrdLayers(start, end, direction) {
