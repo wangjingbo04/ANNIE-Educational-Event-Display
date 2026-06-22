@@ -29,13 +29,13 @@ export function createEventDisplay({ detectorGeometry, scene, mrdLayers, pmtMesh
     }
 
     if (showTruthTracks && event.display.muonFullTrack) {
-      addSolidLine(eventGroup, event.display.muonFullTrack.start, event.display.muonFullTrack.end, 0xff8a00, 0.024);
+      addSolidLine(eventGroup, event.display.muonFullTrack.start, event.display.muonFullTrack.end, 0xff8a00, 0.014);
     } else if (showTruthTracks && event.display.muonTrack) {
-      addSolidLine(eventGroup, event.display.muonTrack.start, event.display.muonTrack.end, 0xff8a00, 0.024);
+      addSolidLine(eventGroup, event.display.muonTrack.start, event.display.muonTrack.end, 0xff8a00, 0.014);
     }
 
     if (showTruthTracks && event.display.cosmicTrack) {
-      addSolidLine(eventGroup, event.display.cosmicTrack.start, event.display.cosmicTrack.end, 0xc77dff, 0.028);
+      addSolidLine(eventGroup, event.display.cosmicTrack.start, event.display.cosmicTrack.end, 0xc77dff, 0.014);
     }
 
     lightMrdLayers(mrdLayers, event.observables.crossedMrdLayers);
@@ -70,9 +70,10 @@ export function createEventDisplay({ detectorGeometry, scene, mrdLayers, pmtMesh
         continue;
       }
 
-      const scale = 1.18 + Math.min(hit.hitCharge / 80, 0.45);
+      const scale = 1.08 + Math.min(hit.hitCharge / 12, 1) * 0.42;
+      const color = chargeColor(hit.hitCharge);
       mesh.scale.setScalar(scale);
-      tintMesh(mesh, 0xfff36c, 0xffbf00, 0.85);
+      tintMesh(mesh, color, color, 0.55 + Math.min(hit.hitCharge / 12, 1) * 1.15);
     }
   }
 
@@ -91,10 +92,10 @@ export function createEventDisplay({ detectorGeometry, scene, mrdLayers, pmtMesh
 }
 
 function addVertex(group, positionArray) {
-  const geometry = new THREE.SphereGeometry(0.075, 24, 24);
+  const geometry = new THREE.BoxGeometry(0.13, 0.13, 0.13);
   const material = new THREE.MeshStandardMaterial({
-    color: 0xfff36c,
-    emissive: 0xff8a00,
+    color: 0xff2d2d,
+    emissive: 0xff2020,
     emissiveIntensity: 1.2,
   });
   const vertex = new THREE.Mesh(geometry, material);
@@ -149,9 +150,9 @@ function addCherenkovCone(group, event, tank) {
   const geometry = createCherenkovPhotonGeometry(source, direction, trackLength, tank);
   const material = new THREE.PointsMaterial({
     color: 0x55cfff,
-    size: 0.035,
+    size: 0.032,
     transparent: true,
-    opacity: 0.82,
+    opacity: 0.68,
     depthWrite: false,
     blending: THREE.AdditiveBlending,
   });
@@ -161,9 +162,9 @@ function addCherenkovCone(group, event, tank) {
 }
 
 function createCherenkovPhotonGeometry(source, axis, length, tank) {
-  const emissionCount = 52;
-  const azimuthCount = 14;
-  const stepsPerPhoton = 4;
+  const emissionCount = 76;
+  const azimuthCount = 22;
+  const stepsPerPhoton = 5;
   const theta = THREE.MathUtils.degToRad(CHERENKOV_ANGLE_DEGREES);
   const [u, v] = makePerpendicularBasis(axis);
   const positions = [];
@@ -179,7 +180,7 @@ function createCherenkovPhotonGeometry(source, axis, length, tank) {
       const phi = ((j + (i % 2) * 0.5) / azimuthCount) * Math.PI * 2;
       const radial = u.clone().multiplyScalar(Math.cos(phi)).add(v.clone().multiplyScalar(Math.sin(phi))).normalize();
       const photonDirection = axis.clone().multiplyScalar(Math.cos(theta)).add(radial.multiplyScalar(Math.sin(theta))).normalize();
-      const maxDistance = distanceInsideTank(emissionPoint, photonDirection, tank, 1.35);
+      const maxDistance = distanceInsideTank(emissionPoint, photonDirection, tank, tank.radiusMeters * 2.4);
 
       for (let step = 1; step <= stepsPerPhoton; step += 1) {
         const distance = maxDistance * (step / stepsPerPhoton);
@@ -239,9 +240,12 @@ function lightMrdLayers(mrdLayers, crossedLayers) {
     const layer = mrdLayers[hit.layerIndex];
     const paddle = layer?.paddles?.[hit.paddleIndex];
     if (paddle) {
-      paddle.material.color.setHex(0xffb347);
-      paddle.material.emissive?.setHex(0xff7a00);
-      paddle.material.emissiveIntensity = 0.9;
+      paddle.material.color.setHex(0xa6ff6a);
+      paddle.material.emissive?.setHex(0x62ff45);
+      paddle.material.emissiveIntensity = 1.05;
+      if ("opacity" in paddle.material) {
+        paddle.material.opacity = 0.88;
+      }
     }
   }
 }
@@ -252,6 +256,7 @@ function captureMrdStates(mrdLayers) {
       color: paddle.material.color.getHex(),
       emissive: paddle.material.emissive?.getHex(),
       emissiveIntensity: paddle.material.emissiveIntensity ?? 0,
+      opacity: paddle.material.opacity ?? 1,
     })),
   }));
 }
@@ -267,6 +272,9 @@ function restoreMrdStates(mrdLayers, baseStates) {
       paddle.material.emissive?.setHex(state.emissive ?? 0x000000);
       if ("emissiveIntensity" in paddle.material) {
         paddle.material.emissiveIntensity = state.emissiveIntensity;
+      }
+      if ("opacity" in paddle.material) {
+        paddle.material.opacity = state.opacity;
       }
     });
   });
@@ -311,6 +319,28 @@ function restoreBaseStates(meshMap, baseStates) {
   });
 }
 
+
+function chargeColor(charge) {
+  if (charge <= 0) {
+    return 0x16204f;
+  }
+  if (charge <= 2) {
+    return interpolateHex(0x16204f, 0x2566d8, charge / 2);
+  }
+  if (charge <= 5) {
+    return interpolateHex(0x2566d8, 0x23c96d, (charge - 2) / 3);
+  }
+  if (charge <= 8) {
+    return interpolateHex(0x23c96d, 0xffdf3a, (charge - 5) / 3);
+  }
+  return interpolateHex(0xffdf3a, 0xff3b22, Math.min((charge - 8) / 4, 1));
+}
+
+function interpolateHex(startHex, endHex, fraction) {
+  const start = new THREE.Color(startHex);
+  const end = new THREE.Color(endHex);
+  return start.lerp(end, Math.min(1, Math.max(0, fraction))).getHex();
+}
 function tintMesh(group, color, emissive, emissiveIntensity) {
   for (const child of group.children) {
     if (!child.material) {

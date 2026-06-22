@@ -258,8 +258,8 @@ function chargeMap(event) {
   return new Map((event.response?.pmtResponses ?? []).map((hit) => [hit.id, hit.hitCharge ?? 0]));
 }
 
-function getChargeMax(charges) {
-  return Math.max(5, ...charges.values());
+function getChargeMax() {
+  return 12;
 }
 
 function makeMrdPlot(margin) {
@@ -294,17 +294,29 @@ function renderTimeScale(svg, x, y, width, height, maxTime) {
   addText(svg, x + width + 7, y + 4, `${maxTime.toFixed(0)} ns`, "event-small-label", "start");
   addText(svg, x + width + 7, y + height, "0", "event-small-label", "start");
 }
-function chargeColor(charge, maxCharge) {
+function chargeColor(charge) {
   if (charge <= 0) {
-    return "#25313a";
+    return "#16204f";
   }
-  const t = clamp(charge / maxCharge, 0, 1);
-  if (t < 0.5) {
-    const k = t / 0.5;
-    return rgb(31 + 65 * k, 112 + 88 * k, 204 - 114 * k);
+  if (charge <= 2) {
+    return interpolateRgb([22, 32, 79], [37, 102, 216], charge / 2);
   }
-  const k = (t - 0.5) / 0.5;
-  return rgb(96 + 159 * k, 200 - 34 * k, 90 - 58 * k);
+  if (charge <= 5) {
+    return interpolateRgb([37, 102, 216], [35, 201, 109], (charge - 2) / 3);
+  }
+  if (charge <= 8) {
+    return interpolateRgb([35, 201, 109], [255, 223, 58], (charge - 5) / 3);
+  }
+  return interpolateRgb([255, 223, 58], [255, 59, 34], Math.min((charge - 8) / 4, 1));
+}
+
+function interpolateRgb(start, end, fraction) {
+  const t = clamp(fraction, 0, 1);
+  return rgb(
+    start[0] + (end[0] - start[0]) * t,
+    start[1] + (end[1] - start[1]) * t,
+    start[2] + (end[2] - start[2]) * t,
+  );
 }
 
 function timeColor(time, maxTime) {

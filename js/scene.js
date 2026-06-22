@@ -427,14 +427,17 @@ function addMrd(group, mrdLayers) {
     metalness: 0.55,
     roughness: 0.36,
     transparent: true,
-    opacity: 0.34,
+    opacity: 0.24,
     depthWrite: false,
   });
   const scintillatorMaterial = new THREE.MeshStandardMaterial({
-    color: 0x2b8fa3,
-    emissive: 0x06252c,
-    metalness: 0.08,
-    roughness: 0.36,
+    color: 0x6bd56a,
+    emissive: 0x163d18,
+    metalness: 0.04,
+    roughness: 0.34,
+    transparent: true,
+    opacity: 0.58,
+    depthWrite: false,
   });
 
   for (let i = 0; i < absorberCount; i += 1) {

@@ -183,6 +183,7 @@ export function initUI({ statusText, sceneDisplay, eventDisplay2D, setView }) {
       showTruthTracks: true,
       showVertex: true,
     });
+    sceneDisplay.showDetectorHits(currentEvent.response);
     coneToggle.disabled = false;
     showPmtHitsButton.disabled = false;
     resetPmtHitsButton.disabled = false;
