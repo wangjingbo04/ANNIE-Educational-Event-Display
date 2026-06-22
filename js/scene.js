@@ -29,7 +29,7 @@ const DETECTOR = {
     heightY: 2.74,
     widthX: 3.05,
     paddleCountPerLayer: 12,
-    realPaddleCountApprox: "306-310",
+    realPaddleCountApprox: "306",
     materialName: "MRDSteel",
     scintillatorMaterialName: "Scinti",
   },
@@ -46,7 +46,6 @@ const DETECTOR = {
 };
 
 const pmtPositions = buildPmtPositions();
-const lappdPositions = [];
 
 export const detectorGeometry = {
   tank: {
@@ -93,7 +92,7 @@ export const detectorGeometry = {
       "WATER_S rmax=1519.24 mm z=3956.05 mm",
       "TBODY_S rmax=1524.0 mm z=3956.05 mm",
       "steelPlate x=3050 mm y=2740 mm z=50 mm",
-      "11 MRD steel placements with 121.1 mm spacing",
+      "MRD represented as 11 scintillator layers interleaved with 11 iron absorber layers",
       "front veto represented as two layers of 13 scintillator paddles",
     ],
   },
@@ -112,7 +111,6 @@ export const detectorGeometry = {
     horizontalTransverse: "+X",
   },
   pmtPositions,
-  lappdPositions,
 };
 
 export function initScene({ container, onReady }) {
@@ -122,7 +120,7 @@ export function initScene({ container, onReady }) {
   const camera = new THREE.PerspectiveCamera(55, 1, 0.1, 1000);
   camera.position.set(6.1, 4.6, 6.4);
 
-  const renderer = new THREE.WebGLRenderer({ antialias: true });
+  const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
   renderer.setSize(container.clientWidth, container.clientHeight);
   renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -163,6 +161,11 @@ export function initScene({ container, onReady }) {
     resetDetectorHits: eventDisplay.resetDetectorHits,
     setCherenkovConeVisible: eventDisplay.setCherenkovConeVisible,
     showDetectorHits: eventDisplay.showDetectorHits,
+    captureImage: () => {
+      controls.update();
+      renderer.render(scene, camera);
+      return renderer.domElement.toDataURL("image/png");
+    },
   };
 }
 
@@ -281,10 +284,11 @@ function addCapSupportArrays(group) {
 }
 
 function addPmts(group, pmtMeshes) {
+  const sharedPmtMaterial = makePmtMaterials(0x1359ff, 0xaed2ff, 0x071c63);
   const materials = {
-    wall: makePmtMaterials(0x1359ff, 0xaed2ff, 0x071c63),
-    top: makePmtMaterials(0xff4f4f, 0xffb0a0, 0x601818),
-    bottom: makePmtMaterials(0x1148d7, 0xa9d4ff, 0x07184d),
+    wall: sharedPmtMaterial,
+    top: sharedPmtMaterial,
+    bottom: sharedPmtMaterial,
   };
   const domeGeometry = createHemisphereGeometry(DETECTOR.pmt.radius, 28, 12);
   const rimGeometry = new THREE.TorusGeometry(DETECTOR.pmt.radius * 0.96, 0.009, 10, 32);
@@ -430,6 +434,11 @@ function addMrd(group, mrdLayers) {
     opacity: 0.24,
     depthWrite: false,
   });
+  const ironEdgeMaterial = new THREE.LineBasicMaterial({
+    color: 0x9aa3a8,
+    transparent: true,
+    opacity: 0.36,
+  });
   const scintillatorMaterial = new THREE.MeshStandardMaterial({
     color: 0x6bd56a,
     emissive: 0x163d18,
@@ -449,6 +458,14 @@ function addMrd(group, mrdLayers) {
     absorber.position.set(0, DETECTOR.tank.center.y, absorberZ);
     absorber.name = `MRD iron absorber ${i + 1}`;
     group.add(absorber);
+
+    const absorberEdges = new THREE.LineSegments(
+      new THREE.EdgesGeometry(absorber.geometry),
+      ironEdgeMaterial,
+    );
+    absorberEdges.position.copy(absorber.position);
+    absorberEdges.name = `MRD iron absorber outline ${i + 1}`;
+    group.add(absorberEdges);
 
     if (i >= scintillatorLayerCount) {
       continue;

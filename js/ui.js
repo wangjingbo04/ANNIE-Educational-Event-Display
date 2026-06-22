@@ -1,5 +1,6 @@
 import { generateEvent, getEventOptions } from "./eventGenerator.js";
 import { simulateDetectorResponse } from "./detectorResponse.js";
+import { exportCurrentViewToPdf } from "./pdfExport.js";
 
 export function initUI({ statusText, sceneDisplay, eventDisplay2D, setView }) {
   const controlsRoot = document.querySelector("#event-controls");
@@ -46,12 +47,13 @@ export function initUI({ statusText, sceneDisplay, eventDisplay2D, setView }) {
       <button id="run-event" type="button">Run Event</button>
       <button id="reset-event" type="button">Reset Event</button>
       <button id="reveal-truth" type="button" disabled>Reveal Truth</button>
+      <button id="export-pdf" type="button">Export PDF</button>
     </div>
     <label class="toggle-field">
       <input id="show-cone" type="checkbox" checked />
       <span>Show Cherenkov Photons</span>
     </label>
-    <p class="control-note">ANNIE MRD: 11 alternating scintillator layers, 6 horizontal and 5 vertical, interleaved with iron absorber plates. It registers muon track hits, not Cherenkov light.</p>
+    <p class="control-note">MRD: 11 alternating vertical/horizontal scintillator layers, 306 paddles total, interleaved with 11 iron absorber layers. It reconstructs the range, energy, and momentum of outgoing muons stopping in the MRD.</p>
     <div class="button-row">
       <button id="show-pmt-hits" type="button" disabled>Show PMT Hits</button>
       <button id="reset-pmt-hits" type="button" disabled>Reset PMT Hits</button>
@@ -64,6 +66,7 @@ export function initUI({ statusText, sceneDisplay, eventDisplay2D, setView }) {
   const runButton = controlsRoot.querySelector("#run-event");
   const resetButton = controlsRoot.querySelector("#reset-event");
   const revealButton = controlsRoot.querySelector("#reveal-truth");
+  const exportPdfButton = controlsRoot.querySelector("#export-pdf");
   const viewSelect = controlsRoot.querySelector("#view-mode");
   const modeSelect = controlsRoot.querySelector("#display-mode");
   const coneToggle = controlsRoot.querySelector("#show-cone");
@@ -147,6 +150,18 @@ export function initUI({ statusText, sceneDisplay, eventDisplay2D, setView }) {
       ? "Event Display View selected"
       : "3D View selected";
   });
+  exportPdfButton.addEventListener("click", () => {
+    const exported = exportCurrentViewToPdf({
+      view: viewSelect.value,
+      sceneDisplay,
+      eventDisplay2D,
+      event: currentEvent,
+    });
+    statusText.textContent = exported
+      ? "PDF export opened in print dialog"
+      : "PDF export was blocked by the browser";
+  });
+
   showPmtHitsButton.addEventListener("click", () => {
     if (!currentEvent?.response) {
       return;

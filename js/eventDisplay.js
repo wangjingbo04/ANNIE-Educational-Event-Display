@@ -240,9 +240,9 @@ function lightMrdLayers(mrdLayers, crossedLayers) {
     const layer = mrdLayers[hit.layerIndex];
     const paddle = layer?.paddles?.[hit.paddleIndex];
     if (paddle) {
-      paddle.material.color.setHex(0xa6ff6a);
-      paddle.material.emissive?.setHex(0x62ff45);
-      paddle.material.emissiveIntensity = 1.05;
+      paddle.material.color.setHex(0xff9b2f);
+      paddle.material.emissive?.setHex(0xff6a00);
+      paddle.material.emissiveIntensity = 1.15;
       if ("opacity" in paddle.material) {
         paddle.material.opacity = 0.88;
       }

@@ -20,7 +20,11 @@ export function initEventDisplay2D({ container, detectorGeometry }) {
 
   renderPlaceholder();
 
-  return { showEvent, clear };
+  return {
+    showEvent,
+    clear,
+    getExportHtml: () => container.innerHTML,
+  };
 
   function render() {
     if (!currentEvent) {
@@ -44,22 +48,24 @@ export function initEventDisplay2D({ container, detectorGeometry }) {
           </dl>
         </header>
         <div class="event-display-figure">
-          <section class="event-pmt-block" aria-label="ANNIE PMT charge display">
-            <h3>ANNIE PMT Charge Display</h3>
-            <div id="top-cap-map" class="event-svg-wrap event-cap-slot"></div>
-            <div id="pmt-wall-map" class="event-svg-wrap event-wall-slot"></div>
-            <div id="bottom-cap-map" class="event-svg-wrap event-cap-slot"></div>
-          </section>
-          <section class="event-mrd-row" aria-label="MRD event projections">
-            <figure class="event-mrd-panel">
-              <figcaption>MRD Side View</figcaption>
-              <div id="mrd-side-map" class="event-svg-wrap"></div>
-            </figure>
-            <figure class="event-mrd-panel">
-              <figcaption>MRD Top View</figcaption>
-              <div id="mrd-top-map" class="event-svg-wrap"></div>
-            </figure>
-          </section>
+          <div class="event-display-body">
+            <section class="event-pmt-block" aria-label="ANNIE PMT charge display">
+              <h3>ANNIE PMT Charge Display</h3>
+              <div id="top-cap-map" class="event-svg-wrap event-cap-slot"></div>
+              <div id="pmt-wall-map" class="event-svg-wrap event-wall-slot"></div>
+              <div id="bottom-cap-map" class="event-svg-wrap event-cap-slot"></div>
+            </section>
+            <section class="event-mrd-column" aria-label="MRD event projections">
+              <figure class="event-mrd-panel">
+                <figcaption>MRD Side View</figcaption>
+                <div id="mrd-side-map" class="event-svg-wrap"></div>
+              </figure>
+              <figure class="event-mrd-panel">
+                <figcaption>MRD Top View</figcaption>
+                <div id="mrd-top-map" class="event-svg-wrap"></div>
+              </figure>
+            </section>
+          </div>
         </div>
       </div>
     `;
@@ -108,8 +114,6 @@ export function initEventDisplay2D({ container, detectorGeometry }) {
       addLine(svg, plot.x, y, plot.x + plot.width, y, "event-grid-line");
     }
 
-    addRect(svg, plot.x + plot.width * 0.62, plot.y + plot.height * 0.18, plot.width * 0.18, plot.height * 0.42, "event-lappd-region");
-    addText(svg, plot.x + plot.width * 0.71, plot.y + plot.height * 0.16, "LAPPD region off", "event-small-label", "middle");
 
     for (const pmt of detectorGeometry.pmtPositions.filter((entry) => entry.surface === "wall-frame")) {
       const angle = positiveAngle(Math.atan2(pmt.position.z, pmt.position.x));
