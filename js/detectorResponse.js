@@ -2,15 +2,16 @@ import {
   CHERENKOV_ANGLE_DEGREES,
   CHERENKOV_CONE_WIDTH_DEGREES,
   LIGHT_SPEED_WATER_METERS_PER_NS,
-  getCherenkovAngleToPoint,
   getCherenkovSource,
   getCherenkovTrackLength,
   getMuonDirection,
-  isOnCherenkovCone,
 } from "./cherenkov.js";
 import { detectorGeometry } from "./scene.js";
 
 const TIMING_SMEAR_NS = 0.45;
+const FOOTPRINT_EDGE_WIDTH_METERS = 0.38;
+const FOOTPRINT_MIN_RADIUS_METERS = 0.28;
+const FOOTPRINT_HIT_THRESHOLD = 0.035;
 
 export function simulateDetectorResponse(event) {
   const source = getCherenkovSource(event);
@@ -29,6 +30,7 @@ export function simulateDetectorResponse(event) {
     cherenkov: {
       angleDegrees: CHERENKOV_ANGLE_DEGREES,
       coneWidthDegrees: CHERENKOV_CONE_WIDTH_DEGREES,
+      model: "filled-footprint",
     },
     pmtResponses,
     pmtHits,
@@ -42,34 +44,82 @@ export function simulateDetectorResponse(event) {
 function simulatePmtResponses(event, source, direction, waterTrackLength) {
   return detectorGeometry.pmtPositions.map((pmt) => {
     const position = pmt.position.clone();
-    const projection = position.clone().sub(source).dot(direction);
-    const angle = getCherenkovAngleToPoint(source, direction, position);
-    const distance = source.distanceTo(position);
-    const hit = projection >= 0 && projection <= waterTrackLength && isOnCherenkovCone(angle);
+    const footprint = calculateFootprintResponse(source, direction, waterTrackLength, position);
+    const hit = footprint.weight > FOOTPRINT_HIT_THRESHOLD;
 
     return {
       id: pmt.id,
       hit,
       positionMeters: position.toArray(),
-      angleDegrees: round(angle, 2),
-      trackProjectionMeters: round(projection, 3),
-      distanceMeters: round(distance, 3),
-      hitCharge: hit ? round(calculateCharge(event, distance, angle), 2) : 0,
-      hitTime: hit ? round(calculateHitTime(distance), 2) : null,
+      angleDegrees: round(footprint.angleDegrees, 2),
+      trackProjectionMeters: round(footprint.projectionMeters, 3),
+      distanceToTrackMeters: round(footprint.distanceToTrackMeters, 3),
+      distanceMeters: round(footprint.distanceMeters, 3),
+      footprintWeight: round(footprint.weight, 3),
+      hitCharge: hit ? round(calculateCharge(event, footprint), 2) : 0,
+      hitTime: hit ? round(calculateHitTime(footprint.lightPathMeters, footprint.projectionMeters), 2) : null,
     };
   });
 }
 
-function calculateCharge(event, distance, angle) {
-  const muonEnergy = event.truth.muonEnergyGeV ?? 1.0;
-  const angularWeight = 1 - Math.abs(angle - CHERENKOV_ANGLE_DEGREES) / CHERENKOV_CONE_WIDTH_DEGREES;
-  const fluctuation = randomBetween(0.9, 1.1);
+function calculateFootprintResponse(source, direction, waterTrackLength, position) {
+  const toPmt = position.clone().sub(source);
+  const rawProjection = toPmt.dot(direction);
+  const projection = clamp(rawProjection, 0, waterTrackLength);
+  const closestPoint = source.clone().add(direction.clone().multiplyScalar(projection));
+  const transverseDistance = position.distanceTo(closestPoint);
+  const directDistance = source.distanceTo(position);
+  const angle = directDistance > 0
+    ? direction.angleTo(toPmt.clone().normalize()) * 180 / Math.PI
+    : 0;
 
-  return Math.max(0, 28 * muonEnergy * angularWeight * fluctuation / Math.max(distance ** 2, 0.2));
+  if (rawProjection < -FOOTPRINT_EDGE_WIDTH_METERS || rawProjection > waterTrackLength + FOOTPRINT_EDGE_WIDTH_METERS) {
+    return {
+      angleDegrees: angle,
+      projectionMeters: rawProjection,
+      distanceToTrackMeters: transverseDistance,
+      distanceMeters: directDistance,
+      lightPathMeters: directDistance,
+      weight: 0,
+    };
+  }
+
+  const coneRadius = Math.max(
+    FOOTPRINT_MIN_RADIUS_METERS,
+    Math.tan(CHERENKOV_ANGLE_DEGREES * Math.PI / 180) * Math.max(projection, 0.08),
+  );
+  const radialFill = 1 - smoothstep(0.18, 1, transverseDistance / (coneRadius + FOOTPRINT_EDGE_WIDTH_METERS));
+  const angularFill = 1 - smoothstep(
+    CHERENKOV_ANGLE_DEGREES + CHERENKOV_CONE_WIDTH_DEGREES,
+    CHERENKOV_ANGLE_DEGREES + CHERENKOV_CONE_WIDTH_DEGREES * 2.6,
+    angle,
+  );
+  const segmentFill = smoothstep(-FOOTPRINT_EDGE_WIDTH_METERS, 0.18, rawProjection)
+    * (1 - smoothstep(waterTrackLength - 0.18, waterTrackLength + FOOTPRINT_EDGE_WIDTH_METERS, rawProjection));
+  const trackCoreBoost = Math.exp(-((transverseDistance / Math.max(coneRadius * 0.42, 0.22)) ** 2));
+  const weight = clamp((0.68 * radialFill + 0.32 * trackCoreBoost) * angularFill * segmentFill, 0, 1);
+
+  return {
+    angleDegrees: angle,
+    projectionMeters: rawProjection,
+    distanceToTrackMeters: transverseDistance,
+    distanceMeters: directDistance,
+    lightPathMeters: Math.hypot(transverseDistance, Math.max(rawProjection - projection, 0)),
+    weight,
+  };
 }
 
-function calculateHitTime(distance) {
-  return distance / LIGHT_SPEED_WATER_METERS_PER_NS + randomBetween(-TIMING_SMEAR_NS, TIMING_SMEAR_NS);
+function calculateCharge(event, footprint) {
+  const muonEnergy = event.truth.muonEnergyGeV ?? 1.0;
+  const distanceScale = 1 / Math.max(footprint.distanceMeters ** 1.35, 0.45);
+  const fluctuation = randomBetween(0.88, 1.12);
+
+  return Math.max(0, 46 * muonEnergy * footprint.weight * distanceScale * fluctuation);
+}
+
+function calculateHitTime(lightPathMeters, projectionMeters) {
+  const emissionDelay = Math.max(projectionMeters, 0) / 0.299792458;
+  return emissionDelay + lightPathMeters / LIGHT_SPEED_WATER_METERS_PER_NS + randomBetween(-TIMING_SMEAR_NS, TIMING_SMEAR_NS);
 }
 
 function createEmptyResponse() {
@@ -77,6 +127,7 @@ function createEmptyResponse() {
     cherenkov: {
       angleDegrees: CHERENKOV_ANGLE_DEGREES,
       coneWidthDegrees: CHERENKOV_CONE_WIDTH_DEGREES,
+      model: "filled-footprint",
     },
     pmtResponses: [],
     pmtHits: [],
@@ -85,6 +136,15 @@ function createEmptyResponse() {
       pmtCharge: 0,
     },
   };
+}
+
+function smoothstep(edge0, edge1, value) {
+  const t = clamp((value - edge0) / (edge1 - edge0), 0, 1);
+  return t * t * (3 - 2 * t);
+}
+
+function clamp(value, min, max) {
+  return Math.min(max, Math.max(min, value));
 }
 
 function randomBetween(min, max) {
