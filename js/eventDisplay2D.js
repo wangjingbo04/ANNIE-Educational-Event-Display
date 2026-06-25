@@ -7,6 +7,7 @@ const MRD_HEIGHT = 250;
 
 export function initEventDisplay2D({ container, detectorGeometry }) {
   let currentEvent = null;
+  let showTruth = false;
 
   function showEvent(event) {
     currentEvent = event;
@@ -33,7 +34,7 @@ export function initEventDisplay2D({ container, detectorGeometry }) {
     }
 
     const event = currentEvent;
-    const title = event.category === "cosmic" ? "A cosmic background event" : `A ${event.truth.eventType} event`;
+    const title = showTruth ? `A ${event.truth.eventType} event` : "Unknown Event";
     container.innerHTML = `
       <div class="event-display-scroll">
         <header class="event-display-header">

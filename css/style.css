@@ -158,6 +158,35 @@ body {
   accent-color: var(--accent);
 }
 
+.classification-panel {
+  display: grid;
+  gap: 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #151b20;
+  padding: 12px;
+}
+
+.classification-panel h3 {
+  margin: 0;
+  color: var(--text);
+  font-size: 0.9rem;
+}
+
+.classification-panel dl {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 6px 12px;
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.classification-panel dd {
+  margin: 0;
+  color: var(--text);
+  font-weight: 700;
+}
 .control-note {
   margin: -6px 0 0;
   color: var(--muted);

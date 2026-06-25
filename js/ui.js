@@ -4,11 +4,12 @@ import { exportCurrentViewToPdf } from "./pdfExport.js";
 
 export function initUI({ statusText, sceneDisplay, eventDisplay2D, setView }) {
   const controlsRoot = document.querySelector("#event-controls");
-  const observablesRoot = document.querySelector("#student-observables");
   const truthRoot = document.querySelector("#truth-readout");
   const options = getEventOptions();
   let currentEvent = null;
-  let currentMode = "teacher";
+  let currentMode = "student";
+  let score = { correct: 0, incorrect: 0 };
+  let hasGuessedCurrentEvent = false;
 
   controlsRoot.innerHTML = `
     <label class="field">
@@ -21,8 +22,8 @@ export function initUI({ statusText, sceneDisplay, eventDisplay2D, setView }) {
     <label class="field">
       <span>Display mode</span>
       <select id="display-mode">
+        <option value="student" selected>Student Mode</option>
         <option value="teacher">Teacher Mode</option>
-        <option value="student">Student Mode</option>
       </select>
     </label>
     <label class="field">
@@ -56,7 +57,18 @@ export function initUI({ statusText, sceneDisplay, eventDisplay2D, setView }) {
       <input id="show-cone" type="checkbox" checked />
       <span>Show Cherenkov Photons</span>
     </label>
-    <p class="control-note">MRD: 11 alternating vertical/horizontal scintillator layers, 306 paddles total, interleaved with 11 iron absorber layers. It reconstructs the range, energy, and momentum of outgoing muons stopping in the MRD. Toy model: most muons stop in the MRD; only high-energy muons may punch through.</p>
+    <p class="control-note">Classification game: decide whether the unknown event is Signal or Background. Dirt and cosmic backgrounds often leave FMV hits before the water or from above. MRD detects muon tracks, not Cherenkov light.</p>
+    <div class="classification-panel">
+      <h3>Student Challenge</h3>
+      <div class="button-row">
+        <button id="guess-signal" type="button" disabled>Guess Signal</button>
+        <button id="guess-background" type="button" disabled>Guess Background</button>
+      </div>
+      <dl>
+        <dt>Correct</dt><dd id="score-correct">0</dd>
+        <dt>Incorrect</dt><dd id="score-incorrect">0</dd>
+      </dl>
+    </div>
     <div class="button-row">
       <button id="show-pmt-hits" type="button" disabled>Show PMT Hits</button>
       <button id="reset-pmt-hits" type="button" disabled>Reset PMT Hits</button>
@@ -73,6 +85,10 @@ export function initUI({ statusText, sceneDisplay, eventDisplay2D, setView }) {
   const resetViewButton = controlsRoot.querySelector("#reset-view");
   const setDefaultViewButton = controlsRoot.querySelector("#set-default-view");
   const copyCameraJsonButton = controlsRoot.querySelector("#copy-camera-json");
+  const guessSignalButton = controlsRoot.querySelector("#guess-signal");
+  const guessBackgroundButton = controlsRoot.querySelector("#guess-background");
+  const scoreCorrect = controlsRoot.querySelector("#score-correct");
+  const scoreIncorrect = controlsRoot.querySelector("#score-incorrect");
   const viewSelect = controlsRoot.querySelector("#view-mode");
   const modeSelect = controlsRoot.querySelector("#display-mode");
   const coneToggle = controlsRoot.querySelector("#show-cone");
@@ -89,22 +105,27 @@ export function initUI({ statusText, sceneDisplay, eventDisplay2D, setView }) {
     });
     currentEvent.response = simulateDetectorResponse(currentEvent);
     currentMode = modeSelect.value;
+    hasGuessedCurrentEvent = false;
     truthRoot.hidden = true;
     truthRoot.innerHTML = "";
     revealButton.disabled = false;
+    guessSignalButton.disabled = false;
+    guessBackgroundButton.disabled = false;
     applyDisplayMode();
-    eventDisplay2D.showEvent(currentEvent);
     renderObservables(currentEvent, currentMode);
     statusText.textContent = currentMode === "teacher"
-      ? "Event generated: truth track and photons shown"
-      : "Event generated: student detector response shown";
+      ? `Event generated: ${currentEvent.truth.eventType}`
+      : "Unknown event generated: classify as signal or background";
   });
 
   resetButton.addEventListener("click", () => {
     currentEvent = null;
+    hasGuessedCurrentEvent = false;
     sceneDisplay.clearEvent();
     eventDisplay2D.clear();
     revealButton.disabled = true;
+    guessSignalButton.disabled = true;
+    guessBackgroundButton.disabled = true;
     showPmtHitsButton.disabled = true;
     resetPmtHitsButton.disabled = true;
     coneToggle.disabled = currentMode !== "teacher";
@@ -121,8 +142,12 @@ export function initUI({ statusText, sceneDisplay, eventDisplay2D, setView }) {
     }
     renderTruth(currentEvent);
     truthRoot.hidden = false;
-    statusText.textContent = "Truth revealed";
+    eventDisplay2D.showEvent(currentEvent, { showTruth: true });
+    statusText.textContent = `Truth revealed: ${currentEvent.truth.eventType}`;
   });
+
+  guessSignalButton.addEventListener("click", () => scoreGuess("signal"));
+  guessBackgroundButton.addEventListener("click", () => scoreGuess("background"));
 
   coneToggle.addEventListener("change", () => {
     if (!currentEvent || currentMode !== "teacher") {
@@ -141,22 +166,22 @@ export function initUI({ statusText, sceneDisplay, eventDisplay2D, setView }) {
     }
 
     applyDisplayMode();
-    eventDisplay2D.showEvent(currentEvent);
     renderObservables(currentEvent, currentMode);
     statusText.textContent = currentMode === "teacher"
-      ? "Teacher Mode: truth track and photons shown"
-      : "Student Mode: PMT and MRD hits shown";
+      ? "Teacher Mode: truth track, event type, and photons shown"
+      : "Student Mode: event type and true vertex hidden";
   });
 
   viewSelect.addEventListener("change", () => {
     setView(viewSelect.value);
     if (currentEvent) {
-      eventDisplay2D.showEvent(currentEvent);
+      eventDisplay2D.showEvent(currentEvent, { showTruth: currentMode === "teacher" });
     }
     statusText.textContent = viewSelect.value === "event-display"
       ? "Event Display View selected"
       : "3D View selected";
   });
+
   resetViewButton.addEventListener("click", () => {
     sceneDisplay.resetView();
     statusText.textContent = "3D view reset";
@@ -215,6 +240,7 @@ export function initUI({ statusText, sceneDisplay, eventDisplay2D, setView }) {
         showVertex: false,
       });
       sceneDisplay.showDetectorHits(currentEvent.response);
+      eventDisplay2D.showEvent(currentEvent, { showTruth: false });
       coneToggle.disabled = true;
       showPmtHitsButton.disabled = true;
       resetPmtHitsButton.disabled = false;
@@ -227,9 +253,28 @@ export function initUI({ statusText, sceneDisplay, eventDisplay2D, setView }) {
       showVertex: true,
     });
     sceneDisplay.showDetectorHits(currentEvent.response);
+    eventDisplay2D.showEvent(currentEvent, { showTruth: true });
     coneToggle.disabled = false;
     showPmtHitsButton.disabled = false;
     resetPmtHitsButton.disabled = false;
+  }
+
+  function scoreGuess(guess) {
+    if (!currentEvent || hasGuessedCurrentEvent) {
+      return;
+    }
+    hasGuessedCurrentEvent = true;
+    const correct = guess === currentEvent.challenge.classification;
+    if (correct) {
+      score.correct += 1;
+    } else {
+      score.incorrect += 1;
+    }
+    scoreCorrect.textContent = String(score.correct);
+    scoreIncorrect.textContent = String(score.incorrect);
+    guessSignalButton.disabled = true;
+    guessBackgroundButton.disabled = true;
+    statusText.textContent = correct ? "Correct classification" : "Incorrect classification";
   }
 }
 
@@ -240,14 +285,18 @@ function renderNoEvent() {
   `;
 }
 
-function renderObservables(event, mode = "teacher") {
+function renderObservables(event, mode = "student") {
   const response = event.response;
   const isStudentMode = mode === "student";
   document.querySelector("#student-observables").innerHTML = `
     <h3>Event Summary</h3>
     <dl>
       <dt>Event type</dt>
-      <dd>Hidden</dd>
+      <dd>${isStudentMode ? "Unknown Event" : event.truth.eventType}</dd>
+      <dt>Signal/background</dt>
+      <dd>${isStudentMode ? "Hidden" : capitalize(event.challenge.classification)}</dd>
+      <dt>FMV hits</dt>
+      <dd>${event.observables.fmvHitCount}</dd>
       <dt>PMT hits</dt>
       <dd>${response.totals.pmtHits}</dd>
       <dt>Total PMT charge</dt>
@@ -274,20 +323,26 @@ function renderObservables(event, mode = "teacher") {
 
 function renderTruth(event) {
   const truth = event.truth;
-  const isCosmic = event.category === "cosmic";
+  const hasNeutrinoEnergy = typeof truth.neutrinoEnergyGeV === "number";
   document.querySelector("#truth-readout").innerHTML = `
     <h3>Truth</h3>
     <dl>
       <dt>Event type</dt>
       <dd>${truth.eventType}</dd>
+      <dt>Classification</dt>
+      <dd>${capitalize(event.challenge.classification)}</dd>
       <dt>True neutrino energy</dt>
-      <dd>${isCosmic ? "None" : `${truth.neutrinoEnergyGeV.toFixed(1)} GeV`}</dd>
+      <dd>${hasNeutrinoEnergy ? `${truth.neutrinoEnergyGeV.toFixed(1)} GeV` : "None"}</dd>
+      <dt>True interaction vertex</dt>
+      <dd>${truth.vertexMeters ? "Inside water" : truth.hiddenDirtVertexMeters ? "Upstream dirt, hidden in 3D" : "None"}</dd>
       <dt>True muon energy</dt>
-      <dd>${isCosmic ? "Not a neutrino target" : `${truth.muonEnergyGeV.toFixed(3)} GeV`}</dd>
+      <dd>${truth.muonEnergyGeV === null ? "Not a neutrino target" : `${truth.muonEnergyGeV.toFixed(3)} GeV`}</dd>
       <dt>True muon angle</dt>
-      <dd>${isCosmic ? "None" : `${truth.muonAngleDegrees.toFixed(1)} deg`}</dd>
+      <dd>${truth.muonAngleDegrees === null ? "Cosmic track" : `${truth.muonAngleDegrees.toFixed(1)} deg`}</dd>
       <dt>True neutron multiplicity</dt>
       <dd>${truth.neutronMultiplicity}</dd>
+      <dt>FMV hit count</dt>
+      <dd>${truth.fmvHitCount}</dd>
       <dt>True water track length</dt>
       <dd>${truth.muonTrackLengthWaterMeters.toFixed(2)} m</dd>
       <dt>True MRD track length</dt>

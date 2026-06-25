@@ -82,7 +82,7 @@ function getEventTitle(event, view) {
     return view === "event-display" ? "ANNIE 2D Event Display" : "ANNIE 3D Event Display";
   }
 
-  const eventName = event.category === "cosmic" ? "Cosmic background" : event.truth.eventType;
+  const eventName = event.truth?.eventType ?? "Unknown Event";
   return `${eventName} - ANNIE ${view === "event-display" ? "2D" : "3D"} Event Display`;
 }
 

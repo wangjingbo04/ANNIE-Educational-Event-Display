@@ -89,6 +89,14 @@ export const detectorGeometry = {
     paddleLengthMeters: DETECTOR.veto.paddleLength,
     paddleWidthMeters: DETECTOR.veto.paddleWidth,
     paddleThicknessMeters: DETECTOR.veto.paddleThickness,
+    heightMeters: DETECTOR.veto.height,
+  },
+  topVeto: {
+    yMeters: DETECTOR.tank.center.y + DETECTOR.tank.height / 2 + 0.16,
+    paddleCount: 12,
+    paddleLengthMeters: DETECTOR.veto.paddleLength,
+    widthZMeters: DETECTOR.veto.widthZ,
+    paddleThicknessMeters: DETECTOR.veto.paddleThickness,
   },
   gdmlSource: {
     repository: "ANNIEsoft/WCSim",
@@ -148,6 +156,7 @@ export function initScene({ container, onReady }) {
     scene,
     detectorGeometry,
     mrdLayers: detectorModel.mrdLayers,
+    fmvLayers: detectorModel.fmvLayers,
     pmtMeshes: detectorModel.pmtMeshes,
   });
 
@@ -320,19 +329,20 @@ function addLighting(scene) {
 function addDetectorModel(scene) {
   const group = new THREE.Group();
   const mrdLayers = [];
+  const fmvLayers = { front: [], top: [] };
   const pmtMeshes = new Map();
 
   addWaterTank(group);
   addCapSupportArrays(group);
   addWallPmtSupportFrames(group);
   addPmts(group, pmtMeshes);
-  addFrontVeto(group);
+  addFrontVeto(group, fmvLayers);
   addMrd(group, mrdLayers);
   addDetectorAxes(group);
 
   scene.add(group);
 
-  return { mrdLayers, pmtMeshes };
+  return { mrdLayers, fmvLayers, pmtMeshes };
 }
 
 function addWaterTank(group) {
@@ -635,7 +645,7 @@ function addMrd(group, mrdLayers) {
   }
 }
 
-function addFrontVeto(group) {
+function addFrontVeto(group, fmvLayers) {
   const { paddleCount, layers, paddleLength, paddleWidth, paddleThickness, x, widthZ } = DETECTOR.veto;
   const paddlesPerLayer = paddleCount / layers;
   const paddleMaterial = new THREE.MeshStandardMaterial({
@@ -655,16 +665,22 @@ function addFrontVeto(group) {
 
   for (let layer = 0; layer < layers; layer += 1) {
     const layerZ = x - layer * 0.045;
+    const layerRecord = { plane: "front", index: layer, paddles: [] };
     for (let i = 0; i < paddlesPerLayer; i += 1) {
-      const paddle = new THREE.Mesh(paddleGeometry, paddleMaterial);
+      const paddle = new THREE.Mesh(paddleGeometry, paddleMaterial.clone());
       paddle.position.set(
         0,
         DETECTOR.tank.center.y - 1.84 + i * 0.307 + layer * 0.006,
         layerZ,
       );
+      paddle.name = `FMV front paddle ${layer + 1}-${i + 1}`;
       group.add(paddle);
+      layerRecord.paddles.push(paddle);
     }
+    fmvLayers.front.push(layerRecord);
   }
+
+  addTopVeto(group, fmvLayers, paddleMaterial);
 
   const frameGeometry = new THREE.BoxGeometry(0.035, DETECTOR.veto.height, 0.035);
   for (const xPosition of [-widthZ / 2, widthZ / 2]) {
@@ -672,6 +688,29 @@ function addFrontVeto(group) {
     upright.position.set(xPosition, DETECTOR.tank.center.y, x + 0.035);
     group.add(upright);
   }
+}
+
+function addTopVeto(group, fmvLayers, sourceMaterial) {
+  const paddleCount = 12;
+  const y = DETECTOR.tank.center.y + DETECTOR.tank.height / 2 + 0.16;
+  const widthZ = DETECTOR.veto.widthZ;
+  const paddleGeometry = new THREE.BoxGeometry(
+    DETECTOR.veto.paddleLength,
+    DETECTOR.veto.paddleThickness,
+    widthZ / paddleCount * 0.82,
+  );
+  const layer = { plane: "top", index: 0, paddles: [] };
+
+  for (let i = 0; i < paddleCount; i += 1) {
+    const paddle = new THREE.Mesh(paddleGeometry, sourceMaterial.clone());
+    const z = -widthZ / 2 + (i + 0.5) * (widthZ / paddleCount);
+    paddle.position.set(0, y, z);
+    paddle.name = `FMV top paddle ${i + 1}`;
+    group.add(paddle);
+    layer.paddles.push(paddle);
+  }
+
+  fmvLayers.top.push(layer);
 }
 
 function addDetectorAxes(group) {

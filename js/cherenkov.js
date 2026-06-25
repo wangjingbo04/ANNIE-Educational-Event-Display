@@ -6,6 +6,10 @@ export const CHERENKOV_CONE_WIDTH_DEGREES = 8;
 export const LIGHT_SPEED_WATER_METERS_PER_NS = 0.299792458 / WATER_REFRACTIVE_INDEX;
 
 export function getCherenkovSource(event) {
+  if (event.display?.muonTrack?.start) {
+    return new THREE.Vector3().fromArray(event.display.muonTrack.start);
+  }
+
   if (event.truth.vertexMeters) {
     return new THREE.Vector3().fromArray(event.truth.vertexMeters);
   }

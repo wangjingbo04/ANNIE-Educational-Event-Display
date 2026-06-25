@@ -1,7 +1,7 @@
 import * as THREE from "three";
 import { CHERENKOV_ANGLE_DEGREES, getCherenkovSource, getCherenkovTrackLength, getMuonDirection } from "./cherenkov.js";
 
-export function createEventDisplay({ detectorGeometry, scene, mrdLayers, pmtMeshes }) {
+export function createEventDisplay({ detectorGeometry, scene, mrdLayers, fmvLayers, pmtMeshes }) {
   const eventGroup = new THREE.Group();
   eventGroup.name = "event display";
   scene.add(eventGroup);
@@ -15,6 +15,7 @@ export function createEventDisplay({ detectorGeometry, scene, mrdLayers, pmtMesh
   scene.add(hitMarkerGroup);
 
   const mrdBaseStates = captureMrdStates(mrdLayers);
+  const fmvBaseStates = captureFmvStates(fmvLayers);
   const pmtBaseStates = captureBaseStates(pmtMeshes);
 
   function showEvent(event, { showCone = true, showTruthTracks = true, showVertex = true } = {}) {
@@ -39,6 +40,7 @@ export function createEventDisplay({ detectorGeometry, scene, mrdLayers, pmtMesh
     }
 
     lightMrdLayers(mrdLayers, event.observables.crossedMrdLayers);
+    lightFmvLayers(fmvLayers, event.observables.fmvHits);
 
     if (showCone) {
       setCherenkovConeVisible(event, true);
@@ -50,6 +52,7 @@ export function createEventDisplay({ detectorGeometry, scene, mrdLayers, pmtMesh
     coneGroup.clear();
     resetDetectorHits();
     restoreMrdStates(mrdLayers, mrdBaseStates);
+    restoreFmvStates(fmvLayers, fmvBaseStates);
   }
 
   function setCherenkovConeVisible(event, visible) {
@@ -235,6 +238,7 @@ function isPointInsideTank(point, tank) {
     && point.y >= center.y - halfHeight - 0.000001
     && point.y <= center.y + halfHeight + 0.000001;
 }
+
 function lightMrdLayers(mrdLayers, crossedLayers) {
   for (const hit of crossedLayers) {
     const layer = mrdLayers[hit.layerIndex];
@@ -247,6 +251,56 @@ function lightMrdLayers(mrdLayers, crossedLayers) {
         paddle.material.opacity = 0.88;
       }
     }
+  }
+}
+
+function lightFmvLayers(fmvLayers, fmvHits = []) {
+  for (const hit of fmvHits) {
+    const layer = fmvLayers?.[hit.plane]?.[hit.layerIndex];
+    const paddle = layer?.paddles?.[hit.paddleIndex];
+    if (paddle) {
+      paddle.material.color.setHex(0xffd34d);
+      paddle.material.emissive?.setHex(0xffa000);
+      paddle.material.emissiveIntensity = 1.35;
+      if ("opacity" in paddle.material) {
+        paddle.material.opacity = 0.95;
+      }
+    }
+  }
+}
+
+function captureFmvStates(fmvLayers) {
+  return Object.fromEntries(Object.entries(fmvLayers ?? {}).map(([plane, layers]) => [
+    plane,
+    layers.map((layer) => ({
+      paddles: layer.paddles.map((paddle) => ({
+        color: paddle.material.color.getHex(),
+        emissive: paddle.material.emissive?.getHex(),
+        emissiveIntensity: paddle.material.emissiveIntensity ?? 0,
+        opacity: paddle.material.opacity ?? 1,
+      })),
+    })),
+  ]));
+}
+
+function restoreFmvStates(fmvLayers, baseStates) {
+  for (const [plane, layers] of Object.entries(fmvLayers ?? {})) {
+    layers.forEach((layer, layerIndex) => {
+      layer.paddles.forEach((paddle, paddleIndex) => {
+        const state = baseStates?.[plane]?.[layerIndex]?.paddles?.[paddleIndex];
+        if (!state) {
+          return;
+        }
+        paddle.material.color.setHex(state.color);
+        paddle.material.emissive?.setHex(state.emissive ?? 0x000000);
+        if ("emissiveIntensity" in paddle.material) {
+          paddle.material.emissiveIntensity = state.emissiveIntensity;
+        }
+        if ("opacity" in paddle.material) {
+          paddle.material.opacity = state.opacity;
+        }
+      });
+    });
   }
 }
 
@@ -341,6 +395,7 @@ function interpolateHex(startHex, endHex, fraction) {
   const end = new THREE.Color(endHex);
   return start.lerp(end, Math.min(1, Math.max(0, fraction))).getHex();
 }
+
 function tintMesh(group, color, emissive, emissiveIntensity) {
   for (const child of group.children) {
     if (!child.material) {
