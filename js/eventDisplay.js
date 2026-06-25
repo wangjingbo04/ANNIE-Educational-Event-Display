@@ -92,36 +92,14 @@ export function createEventDisplay({ detectorGeometry, scene, mrdLayers, pmtMesh
 }
 
 function addVertex(group, positionArray) {
-  const shape = new THREE.Shape();
-  const outerRadius = 0.13;
-  const innerRadius = 0.055;
-  for (let i = 0; i < 10; i += 1) {
-    const radius = i % 2 === 0 ? outerRadius : innerRadius;
-    const angle = -Math.PI / 2 + (i / 10) * Math.PI * 2;
-    const x = Math.cos(angle) * radius;
-    const y = Math.sin(angle) * radius;
-    if (i === 0) {
-      shape.moveTo(x, y);
-    } else {
-      shape.lineTo(x, y);
-    }
-  }
-  shape.closePath();
-
-  const geometry = new THREE.ExtrudeGeometry(shape, {
-    depth: 0.035,
-    bevelEnabled: false,
-  });
-  geometry.center();
+  const geometry = new THREE.SphereGeometry(0.075, 24, 16);
   const material = new THREE.MeshStandardMaterial({
     color: 0xff2d2d,
     emissive: 0xff2020,
-    emissiveIntensity: 1.2,
-    side: THREE.DoubleSide,
+    emissiveIntensity: 1.5,
   });
   const vertex = new THREE.Mesh(geometry, material);
   vertex.position.fromArray(positionArray);
-  vertex.lookAt(0, positionArray[1], 0);
   group.add(vertex);
 }
 
