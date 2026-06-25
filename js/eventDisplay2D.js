@@ -39,7 +39,7 @@ export function initEventDisplay2D({ container, detectorGeometry }) {
         <header class="event-display-header">
           <div>
             <h2>${title}</h2>
-            <p>Red square shows reconstructed vertex estimate</p>
+            <p>Red star shows reconstructed vertex estimate</p>
           </div>
           <dl>
             <div><dt>PMT hits</dt><dd>${event.response?.totals?.pmtHits ?? 0}</dd></div>
@@ -245,7 +245,7 @@ export function initEventDisplay2D({ container, detectorGeometry }) {
     const angle = positiveAngle(Math.atan2(vertex[2], vertex[0]));
     const x = plot.x + (angle / (Math.PI * 2)) * plot.width;
     const y = plot.y + (1 - (vertex[1] - yMin) / (yMax - yMin)) * plot.height;
-    addRect(svg, x - 5, y - 5, 10, 10, "event-vertex-marker");
+    addPolygon(svg, starPoints(x, y, 8, 3.4), "event-vertex-marker");
   }
 
   function layerZ(layerIndex) {
@@ -364,6 +364,27 @@ function addRect(svg, x, y, width, height, fillOrClass, maybeClass) {
   }
   svg.appendChild(rect);
   return rect;
+}
+
+function addPolygon(svg, points, className) {
+  const polygon = document.createElementNS(SVG_NS, "polygon");
+  polygon.setAttribute("points", points.map(([x, y]) => `${x.toFixed(2)},${y.toFixed(2)}`).join(" "));
+  polygon.setAttribute("class", className);
+  svg.appendChild(polygon);
+  return polygon;
+}
+
+function starPoints(cx, cy, outerRadius, innerRadius) {
+  const points = [];
+  for (let i = 0; i < 10; i += 1) {
+    const radius = i % 2 === 0 ? outerRadius : innerRadius;
+    const angle = -Math.PI / 2 + (i / 10) * Math.PI * 2;
+    points.push([
+      cx + Math.cos(angle) * radius,
+      cy + Math.sin(angle) * radius,
+    ]);
+  }
+  return points;
 }
 
 function addCircle(svg, cx, cy, r, fill, className, title) {
