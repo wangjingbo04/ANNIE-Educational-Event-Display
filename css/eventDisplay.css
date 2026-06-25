@@ -137,8 +137,30 @@
 .event-mrd-column {
   display: grid;
   grid-template-columns: 1fr;
+  gap: 10px;
+  align-items: start;
+  min-width: 0;
+}
+
+.event-mrd-column h3 {
+  margin: 0;
+  color: #dfe9ee;
+  font-size: 0.86rem;
+  font-weight: 700;
+}
+
+.event-annie-view-grid {
+  display: grid;
+  grid-template-columns: minmax(120px, 0.52fr) minmax(220px, 1fr);
   gap: 12px;
   align-items: start;
+  min-width: 0;
+}
+
+.event-fmv-column,
+.event-mrd-views {
+  display: grid;
+  gap: 12px;
   min-width: 0;
 }
 
@@ -260,6 +282,10 @@
     padding-bottom: 10px;
     border-right: 0;
     border-bottom: 1px solid #2b363f;
+  }
+
+  .event-annie-view-grid {
+    grid-template-columns: 1fr;
   }
 }
 

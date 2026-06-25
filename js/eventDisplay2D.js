@@ -57,23 +57,30 @@ export function initEventDisplay2D({ container, detectorGeometry }) {
               <div id="pmt-wall-map" class="event-svg-wrap event-wall-slot"></div>
               <div id="bottom-cap-map" class="event-svg-wrap event-cap-slot"></div>
             </section>
-            <section class="event-mrd-column" aria-label="FMV and MRD event projections">
-              <figure class="event-mrd-panel">
-                <figcaption>FMV Horizontal Layer</figcaption>
-                <div id="fmv-horizontal-map" class="event-svg-wrap"></div>
-              </figure>
-              <figure class="event-mrd-panel">
-                <figcaption>FMV Vertical Layer</figcaption>
-                <div id="fmv-vertical-map" class="event-svg-wrap"></div>
-              </figure>
-              <figure class="event-mrd-panel">
-                <figcaption>MRD Side View</figcaption>
-                <div id="mrd-side-map" class="event-svg-wrap"></div>
-              </figure>
-              <figure class="event-mrd-panel">
-                <figcaption>MRD Top View</figcaption>
-                <div id="mrd-top-map" class="event-svg-wrap"></div>
-              </figure>
+            <section class="event-mrd-column" aria-label="ANNIE event projections">
+              <h3>ANNIE Event View</h3>
+              <div class="event-annie-view-grid">
+                <div class="event-fmv-column" aria-label="Front Muon Veto layers">
+                  <figure class="event-mrd-panel">
+                    <figcaption>FMV Horizontal Layer</figcaption>
+                    <div id="fmv-horizontal-map" class="event-svg-wrap"></div>
+                  </figure>
+                  <figure class="event-mrd-panel">
+                    <figcaption>FMV Vertical Layer</figcaption>
+                    <div id="fmv-vertical-map" class="event-svg-wrap"></div>
+                  </figure>
+                </div>
+                <div class="event-mrd-views" aria-label="Muon Range Detector projections">
+                  <figure class="event-mrd-panel">
+                    <figcaption>MRD Side View</figcaption>
+                    <div id="mrd-side-map" class="event-svg-wrap"></div>
+                  </figure>
+                  <figure class="event-mrd-panel">
+                    <figcaption>MRD Top View</figcaption>
+                    <div id="mrd-top-map" class="event-svg-wrap"></div>
+                  </figure>
+                </div>
+              </div>
             </section>
           </div>
         </div>
@@ -93,7 +100,7 @@ export function initEventDisplay2D({ container, detectorGeometry }) {
     container.innerHTML = `
       <div class="event-display-empty">
         <h2>Event Display</h2>
-        <p>Run an event to draw PMT charge maps and MRD hit projections.</p>
+        <p>Run an event to draw PMT charge maps and ANNIE detector projections.</p>
       </div>
     `;
   }
