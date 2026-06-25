@@ -39,7 +39,7 @@ export function initEventDisplay2D({ container, detectorGeometry }) {
         <header class="event-display-header">
           <div>
             <h2>${title}</h2>
-            <p>Red marker shows reconstructed vertex estimate.</p>
+            <p>Red marker shows reconstructed Cherenkov footprint center.</p>
           </div>
           <dl>
             <div><dt>PMT hits</dt><dd>${event.response?.totals?.pmtHits ?? 0}</dd></div>
@@ -123,7 +123,7 @@ export function initEventDisplay2D({ container, detectorGeometry }) {
       addCircle(svg, cx, cy, 5.4, chargeColor(charge, chargeMax), "event-pmt-circle", `${pmt.id}: ${charge.toFixed(1)} PE`);
     }
 
-    drawVertexOnWall(svg, event, plot, yMin, yMax);
+    drawFootprintMarkerOnWall(svg, event, plot, yMin, yMax);
     renderChargeScale(svg, WALL_WIDTH - 66, plot.y + 14, 14, plot.height - 28, chargeMax);
     root.appendChild(svg);
   }
@@ -145,6 +145,7 @@ export function initEventDisplay2D({ container, detectorGeometry }) {
       addCircle(svg, cx, cy, 7, chargeColor(charge, chargeMax), "event-pmt-circle", `${pmt.id}: ${charge.toFixed(1)} PE`);
     }
 
+    drawFootprintMarkerOnCap(svg, event, surface, center, radius);
     root.appendChild(svg);
   }
 
@@ -237,16 +238,27 @@ export function initEventDisplay2D({ container, detectorGeometry }) {
     addLine(svg, x1, y1, x2, y2, "event-reco-track");
   }
 
-  function drawVertexOnWall(svg, event, plot, yMin, yMax) {
-    const vertex = event.display.vertex;
-    if (!vertex) {
+  function drawFootprintMarkerOnWall(svg, event, plot, yMin, yMax) {
+    const marker = getFootprintMarker(event, detectorGeometry.tank);
+    if (!marker || marker.surface !== "wall") {
       return;
     }
-    const angle = positiveAngle(Math.atan2(vertex[2], vertex[0]));
+    const point = marker.point;
+    const angle = positiveAngle(Math.atan2(point[2], point[0]));
     const x = plot.x + (angle / (Math.PI * 2)) * plot.width;
-    const y = plot.y + (1 - (vertex[1] - yMin) / (yMax - yMin)) * plot.height;
-    addLine(svg, x - 7, y, x + 7, y, "event-vertex-marker");
-    addLine(svg, x, y - 7, x, y + 7, "event-vertex-marker");
+    const y = plot.y + (1 - (point[1] - yMin) / (yMax - yMin)) * plot.height;
+    addCrosshair(svg, x, y);
+  }
+
+  function drawFootprintMarkerOnCap(svg, event, surface, center, radius) {
+    const marker = getFootprintMarker(event, detectorGeometry.tank);
+    if (!marker || marker.surface !== surface) {
+      return;
+    }
+    const point = marker.point;
+    const x = center + (point[0] / detectorGeometry.tank.radiusMeters) * radius;
+    const y = center + (point[2] / detectorGeometry.tank.radiusMeters) * radius;
+    addCrosshair(svg, x, y);
   }
 
   function layerZ(layerIndex) {
@@ -257,6 +269,35 @@ export function initEventDisplay2D({ container, detectorGeometry }) {
       + mrd.scintillatorThicknessMeters / 2
       + 0.018;
   }
+}
+
+function getFootprintMarker(event, tank) {
+  const point = event.truth?.waterExitPointMeters;
+  if (!point) {
+    return null;
+  }
+  return {
+    point,
+    surface: classifyTankSurface(point, tank),
+  };
+}
+
+function classifyTankSurface(point, tank) {
+  const yMin = tank.centerMeters[1] - tank.heightMeters / 2;
+  const yMax = tank.centerMeters[1] + tank.heightMeters / 2;
+  const tolerance = 0.03;
+  if (point[1] >= yMax - tolerance) {
+    return "top";
+  }
+  if (point[1] <= yMin + tolerance) {
+    return "bottom";
+  }
+  return "wall";
+}
+
+function addCrosshair(svg, x, y) {
+  addLine(svg, x - 7, y, x + 7, y, "event-vertex-marker");
+  addLine(svg, x, y - 7, x, y + 7, "event-vertex-marker");
 }
 
 function chargeMap(event) {
@@ -299,6 +340,7 @@ function renderTimeScale(svg, x, y, width, height, maxTime) {
   addText(svg, x + width + 7, y + 4, `${maxTime.toFixed(0)} ns`, "event-small-label", "start");
   addText(svg, x + width + 7, y + height, "0", "event-small-label", "start");
 }
+
 function chargeColor(charge) {
   if (charge <= 0) {
     return "#16204f";
