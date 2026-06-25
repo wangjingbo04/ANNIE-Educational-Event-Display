@@ -46,7 +46,8 @@ const DETECTOR = {
 };
 
 const pmtPositions = buildPmtPositions();
-const DEFAULT_CAMERA_STATE = {
+const CAMERA_STORAGE_KEY = "annie.defaultCameraState";
+const FALLBACK_CAMERA_STATE = {
   position: new THREE.Vector3(-8, 4, -12),
   target: new THREE.Vector3(0, 1.55, 1.35),
   zoom: 1,
@@ -122,9 +123,10 @@ export function initScene({ container, onReady }) {
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(0x0c0f12);
 
+  const defaultCameraState = loadDefaultCameraState();
   const camera = new THREE.PerspectiveCamera(55, 1, 0.1, 1000);
-  camera.position.copy(DEFAULT_CAMERA_STATE.position);
-  camera.zoom = DEFAULT_CAMERA_STATE.zoom;
+  camera.position.copy(defaultCameraState.position);
+  camera.zoom = defaultCameraState.zoom;
   camera.updateProjectionMatrix();
 
   const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
@@ -135,9 +137,9 @@ export function initScene({ container, onReady }) {
 
   const controls = new OrbitControls(camera, renderer.domElement);
   controls.enableDamping = true;
-  controls.target.copy(DEFAULT_CAMERA_STATE.target);
+  controls.target.copy(defaultCameraState.target);
 
-  scene.defaultCameraState = cloneCameraState(DEFAULT_CAMERA_STATE);
+  scene.defaultCameraState = cloneCameraState(defaultCameraState);
 
   addLighting(scene);
   const detectorModel = addDetectorModel(scene);
@@ -158,6 +160,25 @@ export function initScene({ container, onReady }) {
     animateCameraToState(camera, controls, scene.defaultCameraState);
   }
 
+  function setCurrentViewAsDefault() {
+    scene.defaultCameraState = {
+      position: camera.position.clone(),
+      target: controls.target.clone(),
+      zoom: camera.zoom,
+    };
+    saveDefaultCameraState(scene.defaultCameraState);
+    logCameraState(scene.defaultCameraState);
+    return cameraStateToPlainObject(scene.defaultCameraState);
+  }
+
+  function getCurrentCameraJson() {
+    return JSON.stringify(cameraStateToPlainObject({
+      position: camera.position,
+      target: controls.target,
+      zoom: camera.zoom,
+    }), null, 2);
+  }
+
   function animate() {
     requestAnimationFrame(animate);
     controls.update();
@@ -176,6 +197,8 @@ export function initScene({ container, onReady }) {
     setCherenkovConeVisible: eventDisplay.setCherenkovConeVisible,
     showDetectorHits: eventDisplay.showDetectorHits,
     resetView,
+    setCurrentViewAsDefault,
+    getCurrentCameraJson,
     captureImage: () => {
       controls.update();
       renderer.render(scene, camera);
@@ -209,6 +232,62 @@ function animateCameraToState(camera, controls, state) {
   requestAnimationFrame(step);
 }
 
+function loadDefaultCameraState() {
+  const stored = readStoredCameraState();
+  return stored ? cloneCameraState(stored) : cloneCameraState(FALLBACK_CAMERA_STATE);
+}
+
+function readStoredCameraState() {
+  try {
+    const json = window.localStorage?.getItem(CAMERA_STORAGE_KEY);
+    if (!json) {
+      return null;
+    }
+    const parsed = JSON.parse(json);
+    return plainObjectToCameraState(parsed);
+  } catch (error) {
+    console.warn("Could not load saved ANNIE camera default", error);
+    return null;
+  }
+}
+
+function saveDefaultCameraState(state) {
+  try {
+    window.localStorage?.setItem(CAMERA_STORAGE_KEY, JSON.stringify(cameraStateToPlainObject(state)));
+  } catch (error) {
+    console.warn("Could not save ANNIE camera default", error);
+  }
+}
+
+function logCameraState(state) {
+  const plain = cameraStateToPlainObject(state);
+  console.log(
+    "Default camera updated:\n"
+      + `position = (${plain.position.map(formatCameraNumber).join(", ")})\n`
+      + `target = (${plain.target.map(formatCameraNumber).join(", ")})\n`
+      + `zoom = ${formatCameraNumber(plain.zoom)}`,
+  );
+}
+
+function cameraStateToPlainObject(state) {
+  return {
+    position: state.position.toArray().map(roundCameraNumber),
+    target: state.target.toArray().map(roundCameraNumber),
+    zoom: roundCameraNumber(state.zoom),
+  };
+}
+
+function plainObjectToCameraState(value) {
+  if (!Array.isArray(value?.position) || !Array.isArray(value?.target) || typeof value.zoom !== "number") {
+    return null;
+  }
+  return {
+    position: new THREE.Vector3().fromArray(value.position),
+    target: new THREE.Vector3().fromArray(value.target),
+    zoom: value.zoom,
+  };
+}
+
 function cloneCameraState(state) {
   return {
     position: state.position.clone(),
@@ -216,6 +295,15 @@ function cloneCameraState(state) {
     zoom: state.zoom,
   };
 }
+
+function roundCameraNumber(value) {
+  return Math.round(value * 100) / 100;
+}
+
+function formatCameraNumber(value) {
+  return value.toFixed(2);
+}
+
 function addLighting(scene) {
   const ambientLight = new THREE.AmbientLight(0xffffff, 0.45);
   scene.add(ambientLight);

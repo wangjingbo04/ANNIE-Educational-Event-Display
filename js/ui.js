@@ -49,6 +49,8 @@ export function initUI({ statusText, sceneDisplay, eventDisplay2D, setView }) {
       <button id="reveal-truth" type="button" disabled>Reveal Truth</button>
       <button id="export-pdf" type="button">Export PDF</button>
       <button id="reset-view" type="button">Reset View</button>
+      <button id="set-default-view" type="button">Set Current View as Default</button>
+      <button id="copy-camera-json" type="button">Copy Camera JSON</button>
     </div>
     <label class="toggle-field">
       <input id="show-cone" type="checkbox" checked />
@@ -69,6 +71,8 @@ export function initUI({ statusText, sceneDisplay, eventDisplay2D, setView }) {
   const revealButton = controlsRoot.querySelector("#reveal-truth");
   const exportPdfButton = controlsRoot.querySelector("#export-pdf");
   const resetViewButton = controlsRoot.querySelector("#reset-view");
+  const setDefaultViewButton = controlsRoot.querySelector("#set-default-view");
+  const copyCameraJsonButton = controlsRoot.querySelector("#copy-camera-json");
   const viewSelect = controlsRoot.querySelector("#view-mode");
   const modeSelect = controlsRoot.querySelector("#display-mode");
   const coneToggle = controlsRoot.querySelector("#show-cone");
@@ -107,7 +111,8 @@ export function initUI({ statusText, sceneDisplay, eventDisplay2D, setView }) {
     truthRoot.hidden = true;
     truthRoot.innerHTML = "";
     renderNoEvent();
-    statusText.textContent = "Event reset";
+    sceneDisplay.resetView();
+    statusText.textContent = "Event reset and view restored";
   });
 
   revealButton.addEventListener("click", () => {
@@ -155,6 +160,22 @@ export function initUI({ statusText, sceneDisplay, eventDisplay2D, setView }) {
   resetViewButton.addEventListener("click", () => {
     sceneDisplay.resetView();
     statusText.textContent = "3D view reset";
+  });
+
+  setDefaultViewButton.addEventListener("click", () => {
+    sceneDisplay.setCurrentViewAsDefault();
+    statusText.textContent = "Current 3D view saved as default";
+  });
+
+  copyCameraJsonButton.addEventListener("click", async () => {
+    const json = sceneDisplay.getCurrentCameraJson();
+    try {
+      await navigator.clipboard.writeText(json);
+      statusText.textContent = "Camera JSON copied to clipboard";
+    } catch (error) {
+      console.log("Camera JSON:\n" + json);
+      statusText.textContent = "Clipboard blocked; camera JSON printed to console";
+    }
   });
 
   exportPdfButton.addEventListener("click", () => {
