@@ -9,8 +9,9 @@ export function initEventDisplay2D({ container, detectorGeometry }) {
   let currentEvent = null;
   let showTruth = false;
 
-  function showEvent(event) {
+  function showEvent(event, options = {}) {
     currentEvent = event;
+    showTruth = options.showTruth ?? false;
     render();
   }
 
@@ -56,7 +57,15 @@ export function initEventDisplay2D({ container, detectorGeometry }) {
               <div id="pmt-wall-map" class="event-svg-wrap event-wall-slot"></div>
               <div id="bottom-cap-map" class="event-svg-wrap event-cap-slot"></div>
             </section>
-            <section class="event-mrd-column" aria-label="MRD event projections">
+            <section class="event-mrd-column" aria-label="FMV and MRD event projections">
+              <figure class="event-mrd-panel">
+                <figcaption>FMV Horizontal Layer</figcaption>
+                <div id="fmv-horizontal-map" class="event-svg-wrap"></div>
+              </figure>
+              <figure class="event-mrd-panel">
+                <figcaption>FMV Vertical Layer</figcaption>
+                <div id="fmv-vertical-map" class="event-svg-wrap"></div>
+              </figure>
               <figure class="event-mrd-panel">
                 <figcaption>MRD Side View</figcaption>
                 <div id="mrd-side-map" class="event-svg-wrap"></div>
@@ -74,6 +83,8 @@ export function initEventDisplay2D({ container, detectorGeometry }) {
     renderWallMap(container.querySelector("#pmt-wall-map"), event);
     renderCapMap(container.querySelector("#top-cap-map"), event, "top");
     renderCapMap(container.querySelector("#bottom-cap-map"), event, "bottom");
+    renderFmvView(container.querySelector("#fmv-horizontal-map"), event, "horizontal");
+    renderFmvView(container.querySelector("#fmv-vertical-map"), event, "vertical");
     renderMrdSideView(container.querySelector("#mrd-side-map"), event);
     renderMrdTopView(container.querySelector("#mrd-top-map"), event);
   }
@@ -150,6 +161,34 @@ export function initEventDisplay2D({ container, detectorGeometry }) {
     root.appendChild(svg);
   }
 
+  function renderFmvView(root, event, orientation) {
+    const svg = makeSvg(MRD_WIDTH, 94);
+    const margin = { left: 28, right: 16, top: 16, bottom: 20 };
+    const plot = {
+      x: margin.left,
+      y: margin.top,
+      width: MRD_WIDTH - margin.left - margin.right,
+      height: 94 - margin.top - margin.bottom,
+    };
+    const fmv = detectorGeometry.frontVeto;
+    const hits = event.observables.fmvHits ?? [];
+    const layerIndex = orientation === "horizontal" ? 0 : 1;
+    const layerHits = hits.filter((hit) => hit.layerIndex === layerIndex);
+
+    addRect(svg, plot.x, plot.y, plot.width, plot.height, "event-map-bg");
+    for (let i = 0; i < fmv.paddleCountPerLayer; i += 1) {
+      const active = layerHits.some((hit) => hit.paddleIndex === i);
+      if (orientation === "horizontal") {
+        const h = plot.height / fmv.paddleCountPerLayer;
+        addRect(svg, plot.x, plot.y + i * h + 1, plot.width, Math.max(1, h - 2), active ? "#ffd34d" : "#24434b", "event-hit-paddle");
+      } else {
+        const w = plot.width / fmv.paddleCountPerLayer;
+        addRect(svg, plot.x + i * w + 1, plot.y, Math.max(1, w - 2), plot.height, active ? "#ffd34d" : "#24434b", "event-hit-paddle");
+      }
+    }
+    addAxisLabel(svg, plot.x + plot.width / 2, 88, orientation === "horizontal" ? "Horizontal paddles stacked in Y" : "Vertical paddles arranged in X", "middle");
+    root.appendChild(svg);
+  }
   function renderMrdSideView(root, event) {
     const svg = makeSvg(MRD_WIDTH, MRD_HEIGHT);
     const margin = { left: 36, right: 18, top: 18, bottom: 34 };
@@ -167,7 +206,9 @@ export function initEventDisplay2D({ container, detectorGeometry }) {
     addRect(svg, sx(-tank.radiusMeters), sy(tank.centerMeters[1] + tank.heightMeters / 2), sx(tank.radiusMeters) - sx(-tank.radiusMeters), sy(tank.centerMeters[1] - tank.heightMeters / 2) - sy(tank.centerMeters[1] + tank.heightMeters / 2), "event-tank-outline");
     addRect(svg, sx(mrd.startZMeters), sy(tank.centerMeters[1] + mrd.heightMeters / 2), sx(mrd.startZMeters + mrd.totalDepthMeters) - sx(mrd.startZMeters), sy(tank.centerMeters[1] - mrd.heightMeters / 2) - sy(tank.centerMeters[1] + mrd.heightMeters / 2), "event-mrd-outline");
     drawMrdHits(svg, event, sx, sy, "side");
-    drawTrack(svg, event, sx, sy, "zy");
+    if (showTruth) {
+      drawTrack(svg, event, sx, sy, "zy");
+    }
     addAxisLabel(svg, plot.x + plot.width / 2, MRD_HEIGHT - 9, "Z beam/downstream", "middle");
     addAxisLabel(svg, 12, plot.y + plot.height / 2, "Y", "middle", -90);
     root.appendChild(svg);
@@ -190,7 +231,9 @@ export function initEventDisplay2D({ container, detectorGeometry }) {
     addCircle(svg, sx(0), sy(0), Math.abs(sx(tank.radiusMeters) - sx(0)), "none", "event-tank-outline");
     addRect(svg, sx(mrd.startZMeters), sy(mrd.widthXMeters / 2), sx(mrd.startZMeters + mrd.totalDepthMeters) - sx(mrd.startZMeters), sy(-mrd.widthXMeters / 2) - sy(mrd.widthXMeters / 2), "event-mrd-outline");
     drawMrdHits(svg, event, sx, sy, "top");
-    drawTrack(svg, event, sx, sy, "zx");
+    if (showTruth) {
+      drawTrack(svg, event, sx, sy, "zx");
+    }
     addAxisLabel(svg, plot.x + plot.width / 2, MRD_HEIGHT - 9, "Z beam/downstream", "middle");
     addAxisLabel(svg, 12, plot.y + plot.height / 2, "X", "middle", -90);
     root.appendChild(svg);

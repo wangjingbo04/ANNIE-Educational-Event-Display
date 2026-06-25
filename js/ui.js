@@ -57,7 +57,7 @@ export function initUI({ statusText, sceneDisplay, eventDisplay2D, setView }) {
       <input id="show-cone" type="checkbox" checked />
       <span>Show Cherenkov Photons</span>
     </label>
-    <p class="control-note">Classification game: decide whether the unknown event is Signal or Background. Dirt and cosmic backgrounds often leave FMV hits before the water or from above. MRD detects muon tracks, not Cherenkov light.</p>
+    <p class="control-note">Classification game: decide whether the unknown event is Signal or Background. Dirt backgrounds can leave FMV hits before the water; cosmic muons enter from above without a top veto. MRD detects muon tracks, not Cherenkov light.</p>
     <div class="classification-panel">
       <h3>Student Challenge</h3>
       <div class="button-row">

@@ -134,8 +134,8 @@ function generateCosmicEvent({ noiseLevel, requestedEventType }) {
     waterTrackLength: track.waterTrackLength,
     mrd,
     neutronMultiplicity: 0,
-    visibleTopology: "top FMV hit with through-going cosmic muon",
-    fmvHits: getTopFmvHits(track.topFmvPoint),
+    visibleTopology: "downward through-going cosmic muon with no FMV hit",
+    fmvHits: [],
     display: {
       incomingNeutrino: null,
       vertex: null,
@@ -273,11 +273,9 @@ function makeDirtTrack() {
 
 function makeCosmicTrack() {
   for (let attempt = 0; attempt < 80; attempt += 1) {
-    const topY = detectorGeometry.topVeto.yMeters;
-    const start = new THREE.Vector3(randomBetween(-1.0, 1.0), topY + 0.55, randomBetween(-0.7, 0.45));
+    const topY = detectorGeometry.tank.centerMeters[1] + detectorGeometry.tank.heightMeters / 2 + 0.55;
+    const start = new THREE.Vector3(randomBetween(-1.0, 1.0), topY, randomBetween(-0.7, 0.45));
     const direction = new THREE.Vector3(randomBetween(-0.12, 0.12), -1, randomBetween(0.35, 0.82)).normalize();
-    const topDistance = (topY - start.y) / direction.y;
-    const topFmvPoint = start.clone().add(direction.clone().multiplyScalar(topDistance));
     const entry = calculateRayCylinderIntersection(start, direction, detectorGeometry.tank);
     const waterEntryPoint = entry.point;
     const insideStart = waterEntryPoint.clone().add(direction.clone().multiplyScalar(0.001));
@@ -286,13 +284,13 @@ function makeCosmicTrack() {
     const waterExitPoint = waterEntryPoint.clone().add(direction.clone().multiplyScalar(waterTrackLength));
     const end = waterExitPoint.clone().add(direction.clone().multiplyScalar(0.75));
 
-    if (waterTrackLength > 0.7 && isInsideTopFmv(topFmvPoint)) {
-      return { start, direction, topFmvPoint, waterEntryPoint, waterExitPoint, waterTrackLength, end };
+    if (waterTrackLength > 0.7) {
+      return { start, direction, waterEntryPoint, waterExitPoint, waterTrackLength, end };
     }
   }
 
   const direction = new THREE.Vector3(0, -1, 0.5).normalize();
-  const start = new THREE.Vector3(0, detectorGeometry.topVeto.yMeters + 0.55, -0.2);
+  const start = new THREE.Vector3(0, detectorGeometry.tank.centerMeters[1] + detectorGeometry.tank.heightMeters / 2 + 0.55, -0.2);
   const entry = calculateRayCylinderIntersection(start, direction, detectorGeometry.tank);
   const insideStart = entry.point.clone().add(direction.clone().multiplyScalar(0.001));
   const exit = calculateRayCylinderIntersection(insideStart, direction, detectorGeometry.tank);
@@ -301,7 +299,6 @@ function makeCosmicTrack() {
   return {
     start,
     direction,
-    topFmvPoint: new THREE.Vector3(0, detectorGeometry.topVeto.yMeters, 0),
     waterEntryPoint: entry.point,
     waterExitPoint,
     waterTrackLength,
@@ -429,36 +426,29 @@ function getCrossedMrdLayers(start, end, direction) {
 }
 
 function getFrontFmvHits(point) {
-  const hits = [];
-  const paddlesPerLayer = detectorGeometry.frontVeto.paddleCount / detectorGeometry.frontVeto.layers;
-  const paddleIndex = coordinateToPaddleIndex(
+  const horizontalPaddle = coordinateToPaddleIndex(
     point.y,
     detectorGeometry.tank.centerMeters[1],
     detectorGeometry.frontVeto.heightMeters,
-    paddlesPerLayer,
+    detectorGeometry.frontVeto.paddleCountPerLayer,
+  );
+  const verticalPaddle = coordinateToPaddleIndex(
+    point.x,
+    0,
+    detectorGeometry.frontVeto.widthXMeters,
+    detectorGeometry.frontVeto.paddleCountPerLayer,
   );
 
-  for (let layerIndex = 0; layerIndex < detectorGeometry.frontVeto.layers; layerIndex += 1) {
-    hits.push({ plane: "front", layerIndex, paddleIndex, hitPointMeters: vectorToArray(point) });
-  }
-  return hits;
-}
-
-function getTopFmvHits(point) {
-  const paddleIndex = coordinateToPaddleIndex(point.z, 0, detectorGeometry.topVeto.widthZMeters, detectorGeometry.topVeto.paddleCount);
-  return [{ plane: "top", layerIndex: 0, paddleIndex, hitPointMeters: vectorToArray(point) }];
+  return [
+    { plane: "front", layerIndex: 0, paddleIndex: horizontalPaddle, orientation: "horizontal", hitPointMeters: vectorToArray(point) },
+    { plane: "front", layerIndex: 1, paddleIndex: verticalPaddle, orientation: "vertical", hitPointMeters: vectorToArray(point) },
+  ];
 }
 
 function isInsideFrontFmv(point) {
-  return Math.abs(point.x) <= detectorGeometry.frontVeto.paddleLengthMeters / 2
+  return Math.abs(point.x) <= detectorGeometry.frontVeto.widthXMeters / 2
     && Math.abs(point.y - detectorGeometry.tank.centerMeters[1]) <= detectorGeometry.frontVeto.heightMeters / 2;
 }
-
-function isInsideTopFmv(point) {
-  return Math.abs(point.x) <= detectorGeometry.topVeto.paddleLengthMeters / 2
-    && Math.abs(point.z) <= detectorGeometry.topVeto.widthZMeters / 2;
-}
-
 function isInsideMrdFace(point) {
   return Math.abs(point.x) <= detectorGeometry.mrd.widthXMeters / 2
     && Math.abs(point.y - detectorGeometry.tank.centerMeters[1]) <= detectorGeometry.mrd.heightMeters / 2;

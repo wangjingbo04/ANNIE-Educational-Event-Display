@@ -34,14 +34,12 @@ const DETECTOR = {
     scintillatorMaterialName: "Scinti",
   },
   veto: {
-    paddleCount: 26,
     layers: 2,
-    paddleLength: 3.2,
-    paddleWidth: 0.305,
+    paddleCountPerLayer: 13,
+    widthX: 3.2,
+    heightY: 4.2149,
     paddleThickness: 0.02,
-    x: -2.18,
-    height: 4.2149,
-    widthZ: 3.2,
+    z: -2.18,
   },
 };
 
@@ -83,19 +81,11 @@ export const detectorGeometry = {
     scintillatorMaterialName: DETECTOR.mrd.scintillatorMaterialName,
   },
   frontVeto: {
-    paddleCount: DETECTOR.veto.paddleCount,
     layers: DETECTOR.veto.layers,
-    zMeters: DETECTOR.veto.x,
-    paddleLengthMeters: DETECTOR.veto.paddleLength,
-    paddleWidthMeters: DETECTOR.veto.paddleWidth,
-    paddleThicknessMeters: DETECTOR.veto.paddleThickness,
-    heightMeters: DETECTOR.veto.height,
-  },
-  topVeto: {
-    yMeters: DETECTOR.tank.center.y + DETECTOR.tank.height / 2 + 0.16,
-    paddleCount: 12,
-    paddleLengthMeters: DETECTOR.veto.paddleLength,
-    widthZMeters: DETECTOR.veto.widthZ,
+    paddleCountPerLayer: DETECTOR.veto.paddleCountPerLayer,
+    zMeters: DETECTOR.veto.z,
+    widthXMeters: DETECTOR.veto.widthX,
+    heightMeters: DETECTOR.veto.heightY,
     paddleThicknessMeters: DETECTOR.veto.paddleThickness,
   },
   gdmlSource: {
@@ -329,7 +319,7 @@ function addLighting(scene) {
 function addDetectorModel(scene) {
   const group = new THREE.Group();
   const mrdLayers = [];
-  const fmvLayers = { front: [], top: [] };
+  const fmvLayers = { front: [] };
   const pmtMeshes = new Map();
 
   addWaterTank(group);
@@ -646,8 +636,7 @@ function addMrd(group, mrdLayers) {
 }
 
 function addFrontVeto(group, fmvLayers) {
-  const { paddleCount, layers, paddleLength, paddleWidth, paddleThickness, x, widthZ } = DETECTOR.veto;
-  const paddlesPerLayer = paddleCount / layers;
+  const { layers, paddleCountPerLayer, widthX, heightY, paddleThickness, z } = DETECTOR.veto;
   const paddleMaterial = new THREE.MeshStandardMaterial({
     color: 0x4fb4c7,
     emissive: 0x0a2730,
@@ -661,56 +650,37 @@ function addFrontVeto(group, fmvLayers) {
     metalness: 0.42,
     roughness: 0.32,
   });
-  const paddleGeometry = new THREE.BoxGeometry(paddleLength, paddleWidth, paddleThickness);
 
   for (let layer = 0; layer < layers; layer += 1) {
-    const layerZ = x - layer * 0.045;
-    const layerRecord = { plane: "front", index: layer, paddles: [] };
-    for (let i = 0; i < paddlesPerLayer; i += 1) {
+    const layerZ = z - layer * 0.045;
+    const orientation = layer === 0 ? "horizontal" : "vertical";
+    const layerRecord = { plane: "front", index: layer, orientation, paddles: [] };
+    const paddleGeometry = orientation === "horizontal"
+      ? new THREE.BoxGeometry(widthX, heightY / paddleCountPerLayer * 0.82, paddleThickness)
+      : new THREE.BoxGeometry(widthX / paddleCountPerLayer * 0.82, heightY, paddleThickness);
+
+    for (let i = 0; i < paddleCountPerLayer; i += 1) {
       const paddle = new THREE.Mesh(paddleGeometry, paddleMaterial.clone());
-      paddle.position.set(
-        0,
-        DETECTOR.tank.center.y - 1.84 + i * 0.307 + layer * 0.006,
-        layerZ,
-      );
-      paddle.name = `FMV front paddle ${layer + 1}-${i + 1}`;
+      if (orientation === "horizontal") {
+        const y = DETECTOR.tank.center.y - heightY / 2 + (i + 0.5) * (heightY / paddleCountPerLayer);
+        paddle.position.set(0, y, layerZ);
+      } else {
+        const x = -widthX / 2 + (i + 0.5) * (widthX / paddleCountPerLayer);
+        paddle.position.set(x, DETECTOR.tank.center.y, layerZ);
+      }
+      paddle.name = `FMV ${orientation} paddle ${layer + 1}-${i + 1}`;
       group.add(paddle);
       layerRecord.paddles.push(paddle);
     }
     fmvLayers.front.push(layerRecord);
   }
 
-  addTopVeto(group, fmvLayers, paddleMaterial);
-
-  const frameGeometry = new THREE.BoxGeometry(0.035, DETECTOR.veto.height, 0.035);
-  for (const xPosition of [-widthZ / 2, widthZ / 2]) {
+  const frameGeometry = new THREE.BoxGeometry(0.035, heightY, 0.035);
+  for (const xPosition of [-widthX / 2, widthX / 2]) {
     const upright = new THREE.Mesh(frameGeometry, frameMaterial);
-    upright.position.set(xPosition, DETECTOR.tank.center.y, x + 0.035);
+    upright.position.set(xPosition, DETECTOR.tank.center.y, z + 0.035);
     group.add(upright);
   }
-}
-
-function addTopVeto(group, fmvLayers, sourceMaterial) {
-  const paddleCount = 12;
-  const y = DETECTOR.tank.center.y + DETECTOR.tank.height / 2 + 0.16;
-  const widthZ = DETECTOR.veto.widthZ;
-  const paddleGeometry = new THREE.BoxGeometry(
-    DETECTOR.veto.paddleLength,
-    DETECTOR.veto.paddleThickness,
-    widthZ / paddleCount * 0.82,
-  );
-  const layer = { plane: "top", index: 0, paddles: [] };
-
-  for (let i = 0; i < paddleCount; i += 1) {
-    const paddle = new THREE.Mesh(paddleGeometry, sourceMaterial.clone());
-    const z = -widthZ / 2 + (i + 0.5) * (widthZ / paddleCount);
-    paddle.position.set(0, y, z);
-    paddle.name = `FMV top paddle ${i + 1}`;
-    group.add(paddle);
-    layer.paddles.push(paddle);
-  }
-
-  fmvLayers.top.push(layer);
 }
 
 function addDetectorAxes(group) {
