@@ -57,6 +57,14 @@ export function initUI({ statusText, sceneDisplay, eventDisplay2D, setView }) {
       <input id="show-cone" type="checkbox" checked />
       <span>Show Cherenkov Photons</span>
     </label>
+    <label class="toggle-field">
+      <input id="generate-fv" type="checkbox" />
+      <span>Generate in Fiducial Volume</span>
+    </label>
+    <label class="toggle-field">
+      <input id="show-fv" type="checkbox" />
+      <span>Show Fiducial Volume</span>
+    </label>
     <p class="control-note">Classification game: decide whether the unknown event is Signal or Background. Dirt backgrounds can leave FMV hits before the water; cosmic muons enter from above without a top veto. MRD detects muon tracks, not Cherenkov light.</p>
     <div class="classification-panel">
       <h3>Student Challenge</h3>
@@ -92,6 +100,8 @@ export function initUI({ statusText, sceneDisplay, eventDisplay2D, setView }) {
   const viewSelect = controlsRoot.querySelector("#view-mode");
   const modeSelect = controlsRoot.querySelector("#display-mode");
   const coneToggle = controlsRoot.querySelector("#show-cone");
+  const generateFvToggle = controlsRoot.querySelector("#generate-fv");
+  const showFvToggle = controlsRoot.querySelector("#show-fv");
   const showPmtHitsButton = controlsRoot.querySelector("#show-pmt-hits");
   const resetPmtHitsButton = controlsRoot.querySelector("#reset-pmt-hits");
 
@@ -102,6 +112,7 @@ export function initUI({ statusText, sceneDisplay, eventDisplay2D, setView }) {
       neutrinoEnergy: Number(energySelect.value),
       eventType: eventTypeSelect.value,
       noiseLevel: noiseSelect.value,
+      generateInFiducialVolume: generateFvToggle.checked,
     });
     currentEvent.response = simulateDetectorResponse(currentEvent);
     currentMode = modeSelect.value;
@@ -148,6 +159,10 @@ export function initUI({ statusText, sceneDisplay, eventDisplay2D, setView }) {
 
   guessSignalButton.addEventListener("click", () => scoreGuess("signal"));
   guessBackgroundButton.addEventListener("click", () => scoreGuess("background"));
+
+  showFvToggle.addEventListener("change", () => {
+    sceneDisplay.setFiducialVolumeVisible(showFvToggle.checked);
+  });
 
   coneToggle.addEventListener("change", () => {
     if (!currentEvent || currentMode !== "teacher") {
@@ -343,6 +358,8 @@ function renderTruth(event) {
       <dd>${truth.neutronMultiplicity}</dd>
       <dt>FMV hit count</dt>
       <dd>${truth.fmvHitCount}</dd>
+      <dt>Fiducial Volume</dt>
+      <dd>${truth.insideFiducialVolume ? "Inside" : "Outside"}</dd>
       <dt>True water track length</dt>
       <dd>${truth.muonTrackLengthWaterMeters.toFixed(2)} m</dd>
       <dt>True MRD track length</dt>
@@ -356,3 +373,5 @@ function renderTruth(event) {
 function capitalize(text) {
   return text.charAt(0).toUpperCase() + text.slice(1);
 }
+
+

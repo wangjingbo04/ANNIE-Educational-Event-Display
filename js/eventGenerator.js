@@ -23,7 +23,7 @@ export function getEventOptions() {
   };
 }
 
-export function generateEvent({ neutrinoEnergy, eventType, noiseLevel }) {
+export function generateEvent({ neutrinoEnergy, eventType, noiseLevel, generateInFiducialVolume = false }) {
   const resolvedType = eventType === "Random" ? choose(REAL_EVENT_TYPES) : eventType;
 
   if (resolvedType === "Dirt interaction") {
@@ -34,11 +34,11 @@ export function generateEvent({ neutrinoEnergy, eventType, noiseLevel }) {
     return generateCosmicEvent({ noiseLevel, requestedEventType: eventType });
   }
 
-  return generateWaterCcqeEvent({ neutrinoEnergy, noiseLevel, requestedEventType: eventType });
+  return generateWaterCcqeEvent({ neutrinoEnergy, noiseLevel, requestedEventType: eventType, generateInFiducialVolume });
 }
 
-function generateWaterCcqeEvent({ neutrinoEnergy, noiseLevel, requestedEventType }) {
-  const vertex = randomVertexInTank();
+function generateWaterCcqeEvent({ neutrinoEnergy, noiseLevel, requestedEventType, generateInFiducialVolume }) {
+  const vertex = generateInFiducialVolume ? randomVertexInFiducialVolume() : randomVertexInTank();
   const muonAngleDegrees = randomMuonAngle(neutrinoEnergy);
   const muonEnergy = randomMuonEnergy(neutrinoEnergy);
   const muonDirection = randomMuonDirection(muonAngleDegrees);
@@ -200,6 +200,7 @@ function buildEvent({
       mrdStopped: mrd.stopped,
       neutronMultiplicity,
       fmvHitCount: fmvHits.length,
+      insideFiducialVolume: vertex ? isInsideFiducialVolume(vertex) : false,
     },
     observables: {
       visibleTopology,
@@ -275,7 +276,7 @@ function makeCosmicTrack() {
   for (let attempt = 0; attempt < 80; attempt += 1) {
     const topY = detectorGeometry.tank.centerMeters[1] + detectorGeometry.tank.heightMeters / 2 + 0.55;
     const start = new THREE.Vector3(randomBetween(-1.0, 1.0), topY, randomBetween(-0.7, 0.45));
-    const direction = new THREE.Vector3(randomBetween(-0.12, 0.12), -1, randomBetween(0.35, 0.82)).normalize();
+    const direction = sampleCosmicMuonDirection();
     const entry = calculateRayCylinderIntersection(start, direction, detectorGeometry.tank);
     const waterEntryPoint = entry.point;
     const insideStart = waterEntryPoint.clone().add(direction.clone().multiplyScalar(0.001));
@@ -289,8 +290,11 @@ function makeCosmicTrack() {
     }
   }
 
-  const direction = new THREE.Vector3(0, -1, 0.5).normalize();
-  const start = new THREE.Vector3(0, detectorGeometry.tank.centerMeters[1] + detectorGeometry.tank.heightMeters / 2 + 0.55, -0.2);
+  const direction = sampleCosmicMuonDirection();
+  const topY = detectorGeometry.tank.centerMeters[1] + detectorGeometry.tank.heightMeters / 2 + 0.55;
+  const centerY = detectorGeometry.tank.centerMeters[1];
+  const distanceToCenter = (centerY - topY) / direction.y;
+  const start = new THREE.Vector3(-direction.x * distanceToCenter, topY, -0.2 - direction.z * distanceToCenter);
   const entry = calculateRayCylinderIntersection(start, direction, detectorGeometry.tank);
   const insideStart = entry.point.clone().add(direction.clone().multiplyScalar(0.001));
   const exit = calculateRayCylinderIntersection(insideStart, direction, detectorGeometry.tank);
@@ -306,6 +310,42 @@ function makeCosmicTrack() {
   };
 }
 
+function sampleCosmicMuonDirection() {
+  const n = 1.5;
+  const maxTheta = THREE.MathUtils.degToRad(75);
+  const u = Math.random();
+  const cosTheta = u ** (1 / (n + 1));
+  const theta = Math.min(Math.acos(cosTheta), maxTheta);
+  const phi = randomBetween(0, Math.PI * 2);
+  const sinTheta = Math.sin(theta);
+
+  return new THREE.Vector3(
+    sinTheta * Math.cos(phi),
+    -Math.cos(theta),
+    sinTheta * Math.sin(phi),
+  ).normalize();
+}
+export function isInsideFiducialVolume(position) {
+  const x = position.x ?? position[0];
+  const y = (position.y ?? position[1]) - detectorGeometry.tank.centerMeters[1];
+  const z = position.z ?? position[2];
+  const radius = 1.0;
+
+  return x * x + z * z <= radius * radius
+    && z <= 0
+    && y >= -0.5
+    && y <= 0.5;
+}
+
+function randomVertexInFiducialVolume() {
+  const radius = Math.sqrt(Math.random()) * 1.0;
+  const angle = randomBetween(Math.PI / 2, Math.PI * 1.5);
+  return new THREE.Vector3(
+    Math.cos(angle) * radius,
+    detectorGeometry.tank.centerMeters[1] + randomBetween(-0.5, 0.5),
+    Math.sin(angle) * radius,
+  );
+}
 function randomVertexInTank() {
   const radius = Math.sqrt(Math.random()) * detectorGeometry.tank.fiducialRadiusMeters;
   const angle = randomBetween(0, Math.PI * 2);
@@ -493,3 +533,8 @@ function createEventId() {
 
   return `event-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
+
+
+
+
+

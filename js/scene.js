@@ -141,6 +141,7 @@ export function initScene({ container, onReady }) {
 
   addLighting(scene);
   const detectorModel = addDetectorModel(scene);
+  detectorModel.fiducialVolume.visible = false;
   addGround(scene);
   const eventDisplay = createEventDisplay({
     scene,
@@ -193,6 +194,7 @@ export function initScene({ container, onReady }) {
     showEvent: eventDisplay.showEvent,
     clearEvent: eventDisplay.clearEvent,
     resetDetectorHits: eventDisplay.resetDetectorHits,
+    setFiducialVolumeVisible: (visible) => { detectorModel.fiducialVolume.visible = visible; },
     setCherenkovConeVisible: eventDisplay.setCherenkovConeVisible,
     showDetectorHits: eventDisplay.showDetectorHits,
     resetView,
@@ -328,11 +330,12 @@ function addDetectorModel(scene) {
   addPmts(group, pmtMeshes);
   addFrontVeto(group, fmvLayers);
   addMrd(group, mrdLayers);
+  const fiducialVolume = addFiducialVolume(group);
   addDetectorAxes(group);
 
   scene.add(group);
 
-  return { mrdLayers, fmvLayers, pmtMeshes };
+  return { mrdLayers, fmvLayers, pmtMeshes, fiducialVolume };
 }
 
 function addWaterTank(group) {
@@ -683,6 +686,52 @@ function addFrontVeto(group, fmvLayers) {
   }
 }
 
+function addFiducialVolume(group) {
+  const radius = 1.0;
+  const height = 1.0;
+  const segments = 40;
+  const positions = [];
+  const indices = [];
+
+  for (let iy = 0; iy <= 1; iy += 1) {
+    const y = DETECTOR.tank.center.y - height / 2 + iy * height;
+    positions.push(0, y, 0);
+    for (let i = 0; i <= segments; i += 1) {
+      const angle = Math.PI + (i / segments) * Math.PI;
+      positions.push(Math.cos(angle) * radius, y, Math.sin(angle) * radius);
+    }
+  }
+
+  const row = segments + 2;
+  for (let i = 1; i <= segments; i += 1) {
+    indices.push(0, i, i + 1);
+    indices.push(row, row + i + 1, row + i);
+    indices.push(i, row + i, i + 1);
+    indices.push(i + 1, row + i, row + i + 1);
+  }
+  indices.push(0, row, 1);
+  indices.push(1, row, row + 1);
+  indices.push(segments + 1, row + segments + 1, 0);
+  indices.push(0, row + segments + 1, row);
+
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+  geometry.setIndex(indices);
+  geometry.computeVertexNormals();
+
+  const material = new THREE.MeshStandardMaterial({
+    color: 0x49ff77,
+    emissive: 0x0d3f18,
+    transparent: true,
+    opacity: 0.22,
+    side: THREE.DoubleSide,
+    depthWrite: false,
+  });
+  const mesh = new THREE.Mesh(geometry, material);
+  mesh.name = "ANNIE fiducial volume";
+  group.add(mesh);
+  return mesh;
+}
 function addDetectorAxes(group) {
   const origin = new THREE.Vector3(-2.25, 0.15, -2.25);
   const axes = [
@@ -840,3 +889,7 @@ function resizeRenderer(container, camera, renderer) {
   camera.updateProjectionMatrix();
   renderer.setSize(width, height, false);
 }
+
+
+
+

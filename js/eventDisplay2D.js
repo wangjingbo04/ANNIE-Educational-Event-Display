@@ -206,6 +206,7 @@ export function initEventDisplay2D({ container, detectorGeometry }) {
 
     addRect(svg, plot.x, plot.y, plot.width, plot.height, "event-map-bg");
     drawFmvProjection(svg, event, sx, sy, "side");
+    drawFiducialVolumeSide(svg, sx, sy);
     addRect(svg, sx(-tank.radiusMeters), sy(tank.centerMeters[1] + tank.heightMeters / 2), sx(tank.radiusMeters) - sx(-tank.radiusMeters), sy(tank.centerMeters[1] - tank.heightMeters / 2) - sy(tank.centerMeters[1] + tank.heightMeters / 2), "event-tank-outline");
     addRect(svg, sx(mrd.startZMeters), sy(tank.centerMeters[1] + mrd.heightMeters / 2), sx(mrd.startZMeters + mrd.totalDepthMeters) - sx(mrd.startZMeters), sy(tank.centerMeters[1] - mrd.heightMeters / 2) - sy(tank.centerMeters[1] + mrd.heightMeters / 2), "event-mrd-outline");
     drawMrdHits(svg, event, sx, sy, "side");
@@ -235,6 +236,7 @@ export function initEventDisplay2D({ container, detectorGeometry }) {
 
     addRect(svg, plot.x, plot.y, plot.width, plot.height, "event-map-bg");
     drawFmvProjection(svg, event, sx, sy, "top");
+    drawFiducialVolumeTop(svg, sx, sy);
     addCircle(svg, sx(0), sy(0), Math.abs(sx(tank.radiusMeters) - sx(0)), "none", "event-tank-outline");
     addRect(svg, sx(mrd.startZMeters), sy(mrd.widthXMeters / 2), sx(mrd.startZMeters + mrd.totalDepthMeters) - sx(mrd.startZMeters), sy(-mrd.widthXMeters / 2) - sy(mrd.widthXMeters / 2), "event-mrd-outline");
     drawMrdHits(svg, event, sx, sy, "top");
@@ -247,6 +249,29 @@ export function initEventDisplay2D({ container, detectorGeometry }) {
     root.appendChild(svg);
   }
 
+
+  function drawFiducialVolumeSide(svg, sx, sy) {
+    const tankCenterY = detectorGeometry.tank.centerMeters[1];
+    const zMin = -1.0;
+    const zMax = 0;
+    const yMin = tankCenterY - 0.5;
+    const yMax = tankCenterY + 0.5;
+    addRect(svg, sx(zMin), sy(yMax), sx(zMax) - sx(zMin), sy(yMin) - sy(yMax), "none", "event-fv-outline");
+    addText(svg, sx((zMin + zMax) / 2), sy(yMax) - 4, "FV", "event-fv-label", "middle");
+  }
+
+  function drawFiducialVolumeTop(svg, sx, sy) {
+    const radius = 1.0;
+    let previous = [sx(-radius), sy(0)];
+    for (let i = 1; i <= 40; i += 1) {
+      const angle = Math.PI + (i / 40) * Math.PI;
+      const current = [sx(Math.cos(angle) * radius), sy(Math.sin(angle) * radius)];
+      addLine(svg, previous[0], previous[1], current[0], current[1], "event-fv-line");
+      previous = current;
+    }
+    addLine(svg, sx(-radius), sy(0), sx(radius), sy(0), "event-fv-line");
+    addText(svg, sx(0), sy(-0.55), "FV", "event-fv-label", "middle");
+  }
   function drawFmvProjection(svg, event, sx, sy, view) {
     const fmvHit = (event.observables.fmvHits ?? []).length > 0;
     const tank = detectorGeometry.tank;
@@ -527,6 +552,7 @@ function addText(svg, x, y, text, className, anchor = "start", rotation = 0) {
 function addAxisLabel(svg, x, y, text, anchor, rotation = 0) {
   return addText(svg, x, y, text, "event-axis-label", anchor, rotation);
 }
+
 
 
 

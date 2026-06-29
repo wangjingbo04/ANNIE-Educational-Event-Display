@@ -264,11 +264,47 @@
 }
 
 .event-axis-label,
+
+.event-fv-outline {
+  fill: rgba(73, 255, 119, 0.08);
+  stroke: #49ff77;
+  stroke-width: 1.8;
+}
+
+.event-fv-line {
+  stroke: #49ff77;
+  stroke-width: 1.8;
+  fill: none;
+}
+
+.event-fv-label {
+  fill: #ff6d6d;
+  font-size: 10px;
+  font-weight: 700;
+}
 .event-small-label {
   fill: #9fb0bb;
   font-size: 11px;
 }
 
+
+.event-fv-outline {
+  fill: rgba(73, 255, 119, 0.08);
+  stroke: #49ff77;
+  stroke-width: 1.8;
+}
+
+.event-fv-line {
+  stroke: #49ff77;
+  stroke-width: 1.8;
+  fill: none;
+}
+
+.event-fv-label {
+  fill: #ff6d6d;
+  font-size: 10px;
+  font-weight: 700;
+}
 .event-small-label {
   font-size: 10px;
 }
@@ -306,3 +342,4 @@
     width: min(190px, 70vw);
   }
 }
+
