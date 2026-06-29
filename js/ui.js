@@ -10,6 +10,7 @@ export function initUI({ statusText, sceneDisplay, eventDisplay2D, setView }) {
   let currentMode = "student";
   let score = { correct: 0, incorrect: 0 };
   let hasGuessedCurrentEvent = false;
+  let currentTimelineStep = 1;
 
   controlsRoot.innerHTML = `
     <label class="field">
@@ -29,6 +30,7 @@ export function initUI({ statusText, sceneDisplay, eventDisplay2D, setView }) {
     <label class="field">
       <span>True neutrino energy</span>
       <select id="neutrino-energy">
+        <option value="random">Random energy</option>
         ${options.energies.map((energy) => `<option value="${energy}">${energy.toFixed(1)} GeV</option>`).join("")}
       </select>
     </label>
@@ -65,6 +67,21 @@ export function initUI({ statusText, sceneDisplay, eventDisplay2D, setView }) {
       <input id="show-fv" type="checkbox" />
       <span>Show Fiducial Volume</span>
     </label>
+    <label class="toggle-field">
+      <input id="show-neutrons" type="checkbox" checked />
+      <span>Show Delayed Neutrons</span>
+    </label>
+    <div class="classification-panel">
+      <h3>Delayed Neutron Timeline</h3>
+      <div class="button-row">
+        <button id="next-neutron-step" type="button" disabled>Next Step</button>
+        <button id="reset-neutron-timeline" type="button" disabled>Reset Timeline</button>
+      </div>
+      <dl>
+        <dt>Step</dt><dd id="neutron-step-readout">Step 1 / 6</dd>
+        <dt>Current detector time</dt><dd id="neutron-time-readout">0 ns</dd>
+      </dl>
+    </div>
     <p class="control-note">Classification game: decide whether the unknown event is Signal or Background. Dirt backgrounds can leave FMV hits before the water; cosmic muons enter from above without a top veto. MRD detects muon tracks, not Cherenkov light.</p>
     <div class="classification-panel">
       <h3>Student Challenge</h3>
@@ -102,27 +119,44 @@ export function initUI({ statusText, sceneDisplay, eventDisplay2D, setView }) {
   const coneToggle = controlsRoot.querySelector("#show-cone");
   const generateFvToggle = controlsRoot.querySelector("#generate-fv");
   const showFvToggle = controlsRoot.querySelector("#show-fv");
+  const showNeutronsToggle = controlsRoot.querySelector("#show-neutrons");
   const showPmtHitsButton = controlsRoot.querySelector("#show-pmt-hits");
   const resetPmtHitsButton = controlsRoot.querySelector("#reset-pmt-hits");
+  const nextNeutronStepButton = controlsRoot.querySelector("#next-neutron-step");
+  const resetNeutronTimelineButton = controlsRoot.querySelector("#reset-neutron-timeline");
+  const neutronStepReadout = controlsRoot.querySelector("#neutron-step-readout");
+  const neutronTimeReadout = controlsRoot.querySelector("#neutron-time-readout");
 
   renderNoEvent();
 
   runButton.addEventListener("click", () => {
     currentEvent = generateEvent({
-      neutrinoEnergy: Number(energySelect.value),
+      neutrinoEnergy: energySelect.value === "random" ? "random" : Number(energySelect.value),
       eventType: eventTypeSelect.value,
       noiseLevel: noiseSelect.value,
       generateInFiducialVolume: generateFvToggle.checked,
     });
     currentEvent.response = simulateDetectorResponse(currentEvent);
+    currentTimelineStep = 1;
     currentMode = modeSelect.value;
     hasGuessedCurrentEvent = false;
     truthRoot.hidden = true;
     truthRoot.innerHTML = "";
     revealButton.disabled = false;
+    nextNeutronStepButton.disabled = currentEvent.truth.neutrons.length === 0;
+    resetNeutronTimelineButton.disabled = currentEvent.truth.neutrons.length === 0;
     guessSignalButton.disabled = false;
     guessBackgroundButton.disabled = false;
-    applyDisplayMode();
+    if (viewSelect.value === "event-display") {
+      eventDisplay2D.showEvent(currentEvent, { showTruth: currentMode === "teacher", timelineStep: currentTimelineStep });
+      coneToggle.disabled = currentMode !== "teacher";
+      showNeutronsToggle.disabled = currentMode !== "teacher";
+      showPmtHitsButton.disabled = currentMode === "student";
+      resetPmtHitsButton.disabled = false;
+    } else {
+      applyDisplayMode();
+    }
+    updateTimelineReadout(currentEvent);
     renderObservables(currentEvent, currentMode);
     statusText.textContent = currentMode === "teacher"
       ? `Event generated: ${currentEvent.truth.eventType}`
@@ -139,7 +173,12 @@ export function initUI({ statusText, sceneDisplay, eventDisplay2D, setView }) {
     guessBackgroundButton.disabled = true;
     showPmtHitsButton.disabled = true;
     resetPmtHitsButton.disabled = true;
+    nextNeutronStepButton.disabled = true;
+    resetNeutronTimelineButton.disabled = true;
+    currentTimelineStep = 1;
+    updateTimelineReadout(null);
     coneToggle.disabled = currentMode !== "teacher";
+    showNeutronsToggle.disabled = currentMode !== "teacher";
     truthRoot.hidden = true;
     truthRoot.innerHTML = "";
     renderNoEvent();
@@ -153,7 +192,7 @@ export function initUI({ statusText, sceneDisplay, eventDisplay2D, setView }) {
     }
     renderTruth(currentEvent);
     truthRoot.hidden = false;
-    eventDisplay2D.showEvent(currentEvent, { showTruth: true });
+    eventDisplay2D.showEvent(currentEvent, { showTruth: true, timelineStep: currentTimelineStep });
     statusText.textContent = `Truth revealed: ${currentEvent.truth.eventType}`;
   });
 
@@ -164,6 +203,30 @@ export function initUI({ statusText, sceneDisplay, eventDisplay2D, setView }) {
     sceneDisplay.setFiducialVolumeVisible(showFvToggle.checked);
   });
 
+  showNeutronsToggle.addEventListener("change", () => {
+    if (!currentEvent || currentMode !== "teacher") {
+      return;
+    }
+    sceneDisplay.setNeutronTimelineStep(currentEvent, currentTimelineStep);
+    statusText.textContent = showNeutronsToggle.checked ? "Delayed neutron captures shown" : "Delayed neutron captures hidden";
+  });
+
+
+  nextNeutronStepButton.addEventListener("click", () => {
+    if (!currentEvent) {
+      return;
+    }
+    currentTimelineStep = Math.min(6, currentTimelineStep + 1);
+    updateTimelineDisplay();
+  });
+
+  resetNeutronTimelineButton.addEventListener("click", () => {
+    if (!currentEvent) {
+      return;
+    }
+    currentTimelineStep = 1;
+    updateTimelineDisplay();
+  });
   coneToggle.addEventListener("change", () => {
     if (!currentEvent || currentMode !== "teacher") {
       return;
@@ -176,11 +239,21 @@ export function initUI({ statusText, sceneDisplay, eventDisplay2D, setView }) {
     currentMode = modeSelect.value;
     if (!currentEvent) {
       coneToggle.disabled = currentMode !== "teacher";
+      showNeutronsToggle.disabled = currentMode !== "teacher";
       statusText.textContent = currentMode === "teacher" ? "Teacher Mode selected" : "Student Mode selected";
       return;
     }
 
-    applyDisplayMode();
+    if (viewSelect.value === "event-display") {
+      eventDisplay2D.showEvent(currentEvent, { showTruth: currentMode === "teacher", timelineStep: currentTimelineStep });
+      coneToggle.disabled = currentMode !== "teacher";
+      showNeutronsToggle.disabled = currentMode !== "teacher";
+      showPmtHitsButton.disabled = currentMode === "student";
+      resetPmtHitsButton.disabled = false;
+    } else {
+      applyDisplayMode();
+    }
+    updateTimelineReadout(currentEvent);
     renderObservables(currentEvent, currentMode);
     statusText.textContent = currentMode === "teacher"
       ? "Teacher Mode: truth track, event type, and photons shown"
@@ -190,7 +263,11 @@ export function initUI({ statusText, sceneDisplay, eventDisplay2D, setView }) {
   viewSelect.addEventListener("change", () => {
     setView(viewSelect.value);
     if (currentEvent) {
-      eventDisplay2D.showEvent(currentEvent, { showTruth: currentMode === "teacher" });
+      if (viewSelect.value === "event-display") {
+        eventDisplay2D.showEvent(currentEvent, { showTruth: currentMode === "teacher", timelineStep: currentTimelineStep });
+      } else {
+        applyDisplayMode();
+      }
     }
     statusText.textContent = viewSelect.value === "event-display"
       ? "Event Display View selected"
@@ -243,6 +320,29 @@ export function initUI({ statusText, sceneDisplay, eventDisplay2D, setView }) {
     statusText.textContent = "PMT hit display reset";
   });
 
+
+  function updateTimelineDisplay() {
+    updateTimelineReadout(currentEvent);
+    if (!currentEvent) {
+      return;
+    }
+    if (viewSelect.value === "event-display") {
+      eventDisplay2D.showEvent(currentEvent, { showTruth: currentMode === "teacher", timelineStep: currentTimelineStep });
+    } else {
+      sceneDisplay.setNeutronTimelineStep(currentEvent, currentTimelineStep);
+    }
+  }
+
+  function updateTimelineReadout(event) {
+    const neutrons = event?.truth?.neutrons ?? [];
+    if (event && neutrons.length === 0) {
+      neutronStepReadout.textContent = "No delayed neutron captures in this event.";
+      neutronTimeReadout.textContent = "None";
+      return;
+    }
+    neutronStepReadout.textContent = `Step ${currentTimelineStep} / 6`;
+    neutronTimeReadout.textContent = timelineTimeLabel(currentTimelineStep, neutrons);
+  }
   function applyDisplayMode() {
     if (!currentEvent) {
       return;
@@ -255,7 +355,8 @@ export function initUI({ statusText, sceneDisplay, eventDisplay2D, setView }) {
         showVertex: false,
       });
       sceneDisplay.showDetectorHits(currentEvent.response);
-      eventDisplay2D.showEvent(currentEvent, { showTruth: false });
+      sceneDisplay.setNeutronTimelineStep(currentEvent, currentTimelineStep);
+      eventDisplay2D.showEvent(currentEvent, { showTruth: false, timelineStep: currentTimelineStep });
       coneToggle.disabled = true;
       showPmtHitsButton.disabled = true;
       resetPmtHitsButton.disabled = false;
@@ -268,8 +369,10 @@ export function initUI({ statusText, sceneDisplay, eventDisplay2D, setView }) {
       showVertex: true,
     });
     sceneDisplay.showDetectorHits(currentEvent.response);
-    eventDisplay2D.showEvent(currentEvent, { showTruth: true });
+    sceneDisplay.setNeutronTimelineStep(currentEvent, currentTimelineStep);
+    eventDisplay2D.showEvent(currentEvent, { showTruth: true, timelineStep: currentTimelineStep });
     coneToggle.disabled = false;
+    showNeutronsToggle.disabled = false;
     showPmtHitsButton.disabled = false;
     resetPmtHitsButton.disabled = false;
   }
@@ -330,9 +433,16 @@ function renderObservables(event, mode = "student") {
       <dd>${event.observables.estimatedMrdTrackLengthMeters.toFixed(2)} m</dd>
       <dt>MRD status</dt>
       <dd>${event.observables.mrdStopStatus}</dd>
+      <dt>Neutron captures</dt>
+      <dd>${event.observables.neutronCaptureCount}</dd>
+      <dt>Earliest capture time</dt>
+      <dd>${formatCaptureTime(event.observables.earliestNeutronCaptureTimeUs)}</dd>
+      <dt>Latest capture time</dt>
+      <dd>${formatCaptureTime(event.observables.latestNeutronCaptureTimeUs)}</dd>
       <dt>Noise level</dt>
       <dd>${capitalize(event.observables.noiseLevel)}</dd>
     </dl>
+    <p class="control-note">Toy model: neutron multiplicity increases with neutrino energy and inelasticity. Zero-neutron events are possible.</p>
   `;
 }
 
@@ -356,6 +466,8 @@ function renderTruth(event) {
       <dd>${truth.muonAngleDegrees === null ? "Cosmic track" : `${truth.muonAngleDegrees.toFixed(1)} deg`}</dd>
       <dt>True neutron multiplicity</dt>
       <dd>${truth.neutronMultiplicity}</dd>
+      <dt>Neutron truth</dt>
+      <dd>${formatNeutronTruth(truth.neutrons)}</dd>
       <dt>FMV hit count</dt>
       <dd>${truth.fmvHitCount}</dd>
       <dt>Fiducial Volume</dt>
@@ -367,11 +479,40 @@ function renderTruth(event) {
       <dt>MRD stop status</dt>
       <dd>${truth.mrdStopped ? "Stopped in MRD" : truth.projectedMrdTrackLengthMeters > 0 ? "Punch-through" : "Did not reach MRD"}</dd>
     </dl>
+      <p class="control-note">Neutrons scatter in Gd-loaded water and are captured on Gd, producing a delayed signal.</p>
   `;
 }
 
+function timelineTimeLabel(step, neutrons = []) {
+  if (step === 1) return "0 ns";
+  if (step === 2) return "10 ns";
+  if (step === 3) return "100 ns";
+  if (step === 4) return "1 us";
+  if (step === 5) return "10 us";
+  return neutrons.length ? `${neutrons[0].captureTimeUs.toFixed(1)} us` : "Capture";
+}
+function formatCaptureTime(timeUs) {
+  return typeof timeUs === "number" ? `${timeUs.toFixed(1)} us` : "None";
+}
+
+function formatNeutronTruth(neutrons = []) {
+  if (!neutrons.length) {
+    return "None";
+  }
+  return neutrons
+    .map((neutron) => `${neutron.id}: ${neutron.captureTimeUs.toFixed(1)} us on ${neutron.capturedOn}`)
+    .join("; ");
+}
 function capitalize(text) {
   return text.charAt(0).toUpperCase() + text.slice(1);
 }
+
+
+
+
+
+
+
+
 
 

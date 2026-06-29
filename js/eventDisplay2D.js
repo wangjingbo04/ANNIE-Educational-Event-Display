@@ -10,10 +10,12 @@ const FMV_STRIP_HEIGHT = 72;
 export function initEventDisplay2D({ container, detectorGeometry }) {
   let currentEvent = null;
   let showTruth = false;
+  let timelineStep = 1;
 
   function showEvent(event, options = {}) {
     currentEvent = event;
     showTruth = options.showTruth ?? false;
+    timelineStep = options.timelineStep ?? timelineStep;
     render();
   }
 
@@ -189,6 +191,32 @@ export function initEventDisplay2D({ container, detectorGeometry }) {
     addAxisLabel(svg, plot.x + plot.width / 2, 58, orientation === "horizontal" ? "Horizontal paddles stacked in Y" : "Vertical paddles arranged in X", "middle");
     root.appendChild(svg);
   }
+
+
+  function drawNeutronTimeline(svg, event, sx, sy, projection) {
+    const neutrons = event.truth?.neutrons ?? [];
+    if (timelineStep <= 1) {
+      return;
+    }
+    for (const neutron of neutrons) {
+      const points = neutron.timelinePoints ?? [neutron.birthPosition, neutron.capturePosition];
+      const endIndex = timelineStep >= 6 ? points.length - 1 : Math.min(timelineStep - 1, points.length - 2);
+      for (let i = 1; i <= endIndex; i += 1) {
+        const x1 = sx(points[i - 1][2]);
+        const y1 = projection === "side" ? sy(points[i - 1][1]) : sy(points[i - 1][0]);
+        const x2 = sx(points[i][2]);
+        const y2 = projection === "side" ? sy(points[i][1]) : sy(points[i][0]);
+        addStrokeLine(svg, x1, y1, x2, y2, "#ff2d2d", "6 5");
+      }
+      const point = points[endIndex];
+      const title = timelineStep >= 6 ? `Gd Capture: ${neutron.captureTimeUs.toFixed(1)} us` : `${neutron.id}: delayed neutron`;
+      const markerY = projection === "side" ? sy(point[1]) : sy(point[0]);
+      addCircle(svg, sx(point[2]), markerY, 4.5, timelineStep >= 6 ? "#39ff14" : "#9ca3af", "event-neutron-marker", title);
+      if (timelineStep >= 6) {
+        addText(svg, sx(point[2]) + 6, markerY - 6, "Gd Capture", "event-small-label", "start");
+      }
+    }
+  }
   function renderMrdSideView(root, event) {
     const svg = makeSvg(MRD_WIDTH, MRD_HEIGHT);
     const margin = { left: 48, right: 18, top: 18, bottom: 34 };
@@ -207,6 +235,7 @@ export function initEventDisplay2D({ container, detectorGeometry }) {
     addRect(svg, plot.x, plot.y, plot.width, plot.height, "event-map-bg");
     drawFmvProjection(svg, event, sx, sy, "side");
     drawFiducialVolumeSide(svg, sx, sy);
+    drawNeutronTimeline(svg, event, sx, sy, "side");
     addRect(svg, sx(-tank.radiusMeters), sy(tank.centerMeters[1] + tank.heightMeters / 2), sx(tank.radiusMeters) - sx(-tank.radiusMeters), sy(tank.centerMeters[1] - tank.heightMeters / 2) - sy(tank.centerMeters[1] + tank.heightMeters / 2), "event-tank-outline");
     addRect(svg, sx(mrd.startZMeters), sy(tank.centerMeters[1] + mrd.heightMeters / 2), sx(mrd.startZMeters + mrd.totalDepthMeters) - sx(mrd.startZMeters), sy(tank.centerMeters[1] - mrd.heightMeters / 2) - sy(tank.centerMeters[1] + mrd.heightMeters / 2), "event-mrd-outline");
     drawMrdHits(svg, event, sx, sy, "side");
@@ -238,6 +267,7 @@ export function initEventDisplay2D({ container, detectorGeometry }) {
     drawFmvProjection(svg, event, sx, sy, "top");
     drawFiducialVolumeTop(svg, sx, sy);
     addCircle(svg, sx(0), sy(0), Math.abs(sx(tank.radiusMeters) - sx(0)), "none", "event-tank-outline");
+    drawNeutronTimeline(svg, event, sx, sy, "top");
     addRect(svg, sx(mrd.startZMeters), sy(mrd.widthXMeters / 2), sx(mrd.startZMeters + mrd.totalDepthMeters) - sx(mrd.startZMeters), sy(-mrd.widthXMeters / 2) - sy(mrd.widthXMeters / 2), "event-mrd-outline");
     drawMrdHits(svg, event, sx, sy, "top");
     if (showTruth) {
@@ -262,15 +292,17 @@ export function initEventDisplay2D({ container, detectorGeometry }) {
 
   function drawFiducialVolumeTop(svg, sx, sy) {
     const radius = 1.0;
-    let previous = [sx(-radius), sy(0)];
+    let previous = [sx(0), sy(radius)];
     for (let i = 1; i <= 40; i += 1) {
-      const angle = Math.PI + (i / 40) * Math.PI;
-      const current = [sx(Math.cos(angle) * radius), sy(Math.sin(angle) * radius)];
+      const angle = Math.PI / 2 + (i / 40) * Math.PI;
+      const z = Math.cos(angle) * radius;
+      const x = Math.sin(angle) * radius;
+      const current = [sx(z), sy(x)];
       addLine(svg, previous[0], previous[1], current[0], current[1], "event-fv-line");
       previous = current;
     }
-    addLine(svg, sx(-radius), sy(0), sx(radius), sy(0), "event-fv-line");
-    addText(svg, sx(0), sy(-0.55), "FV", "event-fv-label", "middle");
+    addLine(svg, sx(0), sy(radius), sx(0), sy(-radius), "event-fv-line");
+    addText(svg, sx(-0.55), sy(0), "FV", "event-fv-label", "middle");
   }
   function drawFmvProjection(svg, event, sx, sy, view) {
     const fmvHit = (event.observables.fmvHits ?? []).length > 0;
@@ -367,6 +399,21 @@ export function initEventDisplay2D({ container, detectorGeometry }) {
   }
 }
 
+
+function timelineTimeLabel(step, neutrons = []) {
+  if (step === 1) return "0 ns";
+  if (step === 2) return "10 ns";
+  if (step === 3) return "100 ns";
+  if (step === 4) return "1 us";
+  if (step === 5) return "10 us";
+  return neutrons.length ? `${neutrons[0].captureTimeUs.toFixed(1)} us` : "Capture";
+}
+function formatCaptureTimes(neutrons) {
+  if (!neutrons?.length) {
+    return "None";
+  }
+  return neutrons.map((neutron) => `${neutron.captureTimeUs.toFixed(1)} us`).join(", ");
+}
 function getFootprintMarker(event, tank) {
   const point = event.truth?.waterExitPointMeters;
   if (!point) {
@@ -524,6 +571,20 @@ function addCircle(svg, cx, cy, r, fill, className, title) {
   return circle;
 }
 
+function addStrokeLine(svg, x1, y1, x2, y2, color, dashArray = "") {
+  const line = document.createElementNS(SVG_NS, "line");
+  line.setAttribute("x1", x1);
+  line.setAttribute("y1", y1);
+  line.setAttribute("x2", x2);
+  line.setAttribute("y2", y2);
+  line.setAttribute("stroke", color);
+  line.setAttribute("stroke-width", "1.5");
+  if (dashArray) {
+    line.setAttribute("stroke-dasharray", dashArray);
+  }
+  svg.appendChild(line);
+  return line;
+}
 function addLine(svg, x1, y1, x2, y2, className) {
   const line = document.createElementNS(SVG_NS, "line");
   line.setAttribute("x1", x1);
@@ -552,6 +613,7 @@ function addText(svg, x, y, text, className, anchor = "start", rotation = 0) {
 function addAxisLabel(svg, x, y, text, anchor, rotation = 0) {
   return addText(svg, x, y, text, "event-axis-label", anchor, rotation);
 }
+
 
 
 

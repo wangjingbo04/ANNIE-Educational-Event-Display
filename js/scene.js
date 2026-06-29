@@ -196,6 +196,7 @@ export function initScene({ container, onReady }) {
     resetDetectorHits: eventDisplay.resetDetectorHits,
     setFiducialVolumeVisible: (visible) => { detectorModel.fiducialVolume.visible = visible; },
     setCherenkovConeVisible: eventDisplay.setCherenkovConeVisible,
+    setNeutronTimelineStep: eventDisplay.setNeutronTimelineStep,
     showDetectorHits: eventDisplay.showDetectorHits,
     resetView,
     setCurrentViewAsDefault,
@@ -723,9 +724,10 @@ function addFiducialVolume(group) {
     color: 0x49ff77,
     emissive: 0x0d3f18,
     transparent: true,
-    opacity: 0.22,
+    opacity: 0.36,
     side: THREE.DoubleSide,
     depthWrite: false,
+    depthTest: false,
   });
   const mesh = new THREE.Mesh(geometry, material);
   mesh.name = "ANNIE fiducial volume";

@@ -7,6 +7,10 @@ const EVENT_TYPES = ["Water CCQE (signal)", "Dirt interaction", "Cosmic muon", "
 const NOISE_LEVELS = ["low", "medium", "high"];
 const REAL_EVENT_TYPES = ["Water CCQE (signal)", "Dirt interaction", "Cosmic muon"];
 const CCQE_MUON_ENERGY_FRACTION = [0.65, 0.9];
+const FIDUCIAL_RADIUS_METERS = 1.0;
+const FIDUCIAL_LOCAL_Y_MIN_METERS = -0.5;
+const FIDUCIAL_LOCAL_Y_MAX_METERS = 0.5;
+
 const MUON_ANGLE_RANGES = {
   0.6: [8, 28],
   0.8: [7, 24],
@@ -24,21 +28,25 @@ export function getEventOptions() {
 }
 
 export function generateEvent({ neutrinoEnergy, eventType, noiseLevel, generateInFiducialVolume = false }) {
+  const resolvedEnergy = neutrinoEnergy === "random" ? choose(ENERGY_OPTIONS) : neutrinoEnergy;
   const resolvedType = eventType === "Random" ? choose(REAL_EVENT_TYPES) : eventType;
 
   if (resolvedType === "Dirt interaction") {
-    return generateDirtEvent({ neutrinoEnergy, noiseLevel, requestedEventType: eventType });
+    return generateDirtEvent({ neutrinoEnergy: resolvedEnergy, noiseLevel, requestedEventType: eventType });
   }
 
   if (resolvedType === "Cosmic muon") {
     return generateCosmicEvent({ noiseLevel, requestedEventType: eventType });
   }
 
-  return generateWaterCcqeEvent({ neutrinoEnergy, noiseLevel, requestedEventType: eventType, generateInFiducialVolume });
+  return generateWaterCcqeEvent({ neutrinoEnergy: resolvedEnergy, noiseLevel, requestedEventType: eventType, generateInFiducialVolume });
 }
 
 function generateWaterCcqeEvent({ neutrinoEnergy, noiseLevel, requestedEventType, generateInFiducialVolume }) {
-  const vertex = generateInFiducialVolume ? randomVertexInFiducialVolume() : randomVertexInTank();
+  const vertex = generateInFiducialVolume ? generateVertexInFiducialVolume() : randomVertexInTank();
+  if (generateInFiducialVolume && !isInsideFiducialVolume(vertex)) {
+    console.warn("Generated water neutrino vertex failed fiducial-volume check", vertex);
+  }
   const muonAngleDegrees = randomMuonAngle(neutrinoEnergy);
   const muonEnergy = randomMuonEnergy(neutrinoEnergy);
   const muonDirection = randomMuonDirection(muonAngleDegrees);
@@ -46,6 +54,7 @@ function generateWaterCcqeEvent({ neutrinoEnergy, noiseLevel, requestedEventType
   const waterTrackLength = waterExit.distance;
   const waterExitPoint = waterExit.point;
   const mrd = estimateMrdSegment(waterExitPoint, muonDirection, muonEnergy, waterTrackLength);
+  const neutrons = generateDelayedNeutrons(vertex, neutrinoEnergy, 'CCQE-like');
 
   return buildEvent({
     category: "water-ccqe",
@@ -62,7 +71,8 @@ function generateWaterCcqeEvent({ neutrinoEnergy, noiseLevel, requestedEventType
     waterExitPoint,
     waterTrackLength,
     mrd,
-    neutronMultiplicity: randomInteger(0, 1),
+    neutronMultiplicity: neutrons.length,
+    neutrons,
     visibleTopology: "contained water vertex with single downstream muon",
     fmvHits: [],
     display: {
@@ -99,6 +109,7 @@ function generateDirtEvent({ neutrinoEnergy, noiseLevel, requestedEventType }) {
     waterTrackLength: track.waterTrackLength,
     mrd,
     neutronMultiplicity: 0,
+    neutrons: [],
     visibleTopology: "upstream FMV hit with entering muon and downstream MRD track",
     fmvHits: getFrontFmvHits(track.fmvPoint),
     display: {
@@ -134,6 +145,7 @@ function generateCosmicEvent({ noiseLevel, requestedEventType }) {
     waterTrackLength: track.waterTrackLength,
     mrd,
     neutronMultiplicity: 0,
+    neutrons: [],
     visibleTopology: "downward through-going cosmic muon with no FMV hit",
     fmvHits: [],
     display: {
@@ -164,6 +176,7 @@ function buildEvent({
   waterTrackLength,
   mrd,
   neutronMultiplicity,
+  neutrons = [],
   visibleTopology,
   fmvHits,
   display,
@@ -199,6 +212,7 @@ function buildEvent({
       projectedMrdTrackLengthMeters: round(mrd.length, 4),
       mrdStopped: mrd.stopped,
       neutronMultiplicity,
+      neutrons,
       fmvHitCount: fmvHits.length,
       insideFiducialVolume: vertex ? isInsideFiducialVolume(vertex) : false,
     },
@@ -211,6 +225,9 @@ function buildEvent({
       mrdStopStatus: mrd.stopped ? "Stopped in MRD" : mrd.length > 0 ? "Punch-through" : "Did not reach MRD",
       fmvHits,
       fmvHitCount: fmvHits.length,
+      neutronCaptureCount: neutrons.length,
+      earliestNeutronCaptureTimeUs: getEarliestCaptureTime(neutrons),
+      latestNeutronCaptureTimeUs: getLatestCaptureTime(neutrons),
       noiseLevel,
     },
     display: {
@@ -325,26 +342,162 @@ function sampleCosmicMuonDirection() {
     sinTheta * Math.sin(phi),
   ).normalize();
 }
+
+function generateDelayedNeutrons(vertex, neutrinoEnergy, interactionModel) {
+  const count = sampleNeutronMultiplicity(neutrinoEnergy, interactionModel);
+  return Array.from({ length: count }, (_, index) => {
+    const capturePosition = sampleCapturePosition(vertex);
+    return {
+      id: `n${index + 1}`,
+      birthPosition: vectorToArray(vertex),
+      capturePosition: vectorToArray(capturePosition),
+      timelinePoints: createNeutronTimelinePoints(vertex, capturePosition),
+      captureTimeUs: round(-20 * Math.log(1 - Math.random()), 2),
+      capturedOn: "Gd",
+    };
+  });
+}
+
+
+function createNeutronTimelinePoints(vertex, capturePosition) {
+  const points = [vertex.clone(), vertex.clone()];
+  for (const fraction of [0.28, 0.52, 0.76]) {
+    let point = vertex.clone().lerp(capturePosition, fraction);
+    for (let attempt = 0; attempt < 20; attempt += 1) {
+      const candidate = vertex.clone().lerp(capturePosition, fraction)
+        .add(randomVectorInSphere(0.28 + fraction * 0.42))
+        .add(new THREE.Vector3(0, 0, 0.08 + fraction * 0.18));
+      if (isInsideWaterTank(candidate)) {
+        point = candidate;
+        break;
+      }
+    }
+    points.push(point);
+  }
+  points.push(capturePosition.clone());
+  return points.map(vectorToArray);
+}
+function sampleNeutronMultiplicity(neutrinoEnergy, interactionModel) {
+  let lambda;
+  let maxCount;
+
+  if (interactionModel === "Resonance-like") {
+    lambda = 1.0 + 0.6 * neutrinoEnergy;
+    maxCount = 8;
+  } else if (interactionModel === "DIS-like") {
+    lambda = 2.0 + 0.8 * neutrinoEnergy;
+    maxCount = 8;
+  } else {
+    maxCount = 5;
+    if (neutrinoEnergy <= 0.6) {
+      lambda = 0.15;
+    } else if (neutrinoEnergy <= 0.8) {
+      lambda = 0.25;
+    } else if (neutrinoEnergy <= 1.0) {
+      lambda = 0.45;
+    } else if (neutrinoEnergy <= 1.5) {
+      lambda = 0.90;
+    } else if (neutrinoEnergy <= 2.0) {
+      lambda = 1.40;
+    } else {
+      lambda = 2.00;
+    }
+  }
+
+  return Math.min(maxCount, Math.max(0, samplePoisson(lambda)));
+}
+
+function samplePoisson(lambda) {
+  const limit = Math.exp(-lambda);
+  let count = 0;
+  let product = 1;
+
+  do {
+    count += 1;
+    product *= Math.random();
+  } while (product > limit);
+
+  return count - 1;
+}
+
+function sampleCapturePosition(vertex) {
+  for (let attempt = 0; attempt < 40; attempt += 1) {
+    const radius = randomBetween(0.75, 1.15);
+    const candidate = vertex.clone()
+      .add(randomVectorInSphere(radius))
+      .add(new THREE.Vector3(0, 0, randomBetween(0.18, 0.42)));
+    if (isInsideWaterTank(candidate)) {
+      return candidate;
+    }
+  }
+  return clampPointInsideTank(vertex.clone().add(randomVectorInSphere(0.9)).add(new THREE.Vector3(0, 0, 0.3)));
+}
+
+function randomVectorInSphere(radius) {
+  const direction = new THREE.Vector3(
+    randomBetween(-1, 1),
+    randomBetween(-1, 1),
+    randomBetween(-1, 1),
+  ).normalize();
+  return direction.multiplyScalar(radius * Math.cbrt(Math.random()));
+}
+
+function isInsideWaterTank(point) {
+  const tank = detectorGeometry.tank;
+  const yCenter = tank.centerMeters[1];
+  const radialDistance = Math.hypot(point.x, point.z);
+  return radialDistance <= tank.radiusMeters
+    && point.y >= yCenter - tank.heightMeters / 2
+    && point.y <= yCenter + tank.heightMeters / 2;
+}
+
+function clampPointInsideTank(point) {
+  const tank = detectorGeometry.tank;
+  const yCenter = tank.centerMeters[1];
+  const radialDistance = Math.hypot(point.x, point.z);
+  if (radialDistance > tank.radiusMeters * 0.96) {
+    const scale = (tank.radiusMeters * 0.96) / radialDistance;
+    point.x *= scale;
+    point.z *= scale;
+  }
+  point.y = THREE.MathUtils.clamp(point.y, yCenter - tank.heightMeters / 2 + 0.04, yCenter + tank.heightMeters / 2 - 0.04);
+  return point;
+}
+
+function getEarliestCaptureTime(neutrons) {
+  if (!neutrons.length) return null;
+  return Math.min(...neutrons.map((neutron) => neutron.captureTimeUs));
+}
+
+function getLatestCaptureTime(neutrons) {
+  if (!neutrons.length) return null;
+  return Math.max(...neutrons.map((neutron) => neutron.captureTimeUs));
+}
 export function isInsideFiducialVolume(position) {
   const x = position.x ?? position[0];
   const y = (position.y ?? position[1]) - detectorGeometry.tank.centerMeters[1];
   const z = position.z ?? position[2];
-  const radius = 1.0;
 
-  return x * x + z * z <= radius * radius
+  return x * x + z * z <= FIDUCIAL_RADIUS_METERS * FIDUCIAL_RADIUS_METERS
     && z <= 0
-    && y >= -0.5
-    && y <= 0.5;
+    && y >= FIDUCIAL_LOCAL_Y_MIN_METERS
+    && y <= FIDUCIAL_LOCAL_Y_MAX_METERS;
 }
 
-function randomVertexInFiducialVolume() {
-  const radius = Math.sqrt(Math.random()) * 1.0;
-  const angle = randomBetween(Math.PI / 2, Math.PI * 1.5);
-  return new THREE.Vector3(
-    Math.cos(angle) * radius,
-    detectorGeometry.tank.centerMeters[1] + randomBetween(-0.5, 0.5),
-    Math.sin(angle) * radius,
-  );
+function generateVertexInFiducialVolume() {
+  while (true) {
+    const radius = FIDUCIAL_RADIUS_METERS * Math.sqrt(Math.random());
+    const phi = Math.random() * Math.PI;
+    const vertex = new THREE.Vector3(
+      radius * Math.cos(phi),
+      detectorGeometry.tank.centerMeters[1] + randomBetween(FIDUCIAL_LOCAL_Y_MIN_METERS, FIDUCIAL_LOCAL_Y_MAX_METERS),
+      -radius * Math.sin(phi),
+    );
+
+    if (isInsideFiducialVolume(vertex)) {
+      return vertex;
+    }
+  }
 }
 function randomVertexInTank() {
   const radius = Math.sqrt(Math.random()) * detectorGeometry.tank.fiducialRadiusMeters;
@@ -422,9 +575,12 @@ function estimateMuonEnergyEnteringMrd(muonEnergyGeV, waterTrackLength, distance
 }
 
 function estimateMrdRange(energyEnteringMrdGeV) {
-  const nominalRange = 0.8 + 3.0 * (energyEnteringMrdGeV - 0.3);
-  const fluctuatedRange = nominalRange * randomBetween(0.8, 1.2);
-  return Math.max(0.3, fluctuatedRange);
+  const nominalRange = energyEnteringMrdGeV < 2.0
+    ? 0.45 + 1.75 * Math.max(energyEnteringMrdGeV - 0.3, 0)
+    : 0.8 + 3.0 * (energyEnteringMrdGeV - 0.3);
+  const fluctuation = energyEnteringMrdGeV < 2.0 ? randomBetween(0.72, 1.05) : randomBetween(0.85, 1.25);
+  const fluctuatedRange = nominalRange * fluctuation;
+  return Math.max(0.25, fluctuatedRange);
 }
 
 function getCrossedMrdLayers(start, end, direction) {
@@ -533,6 +689,16 @@ function createEventId() {
 
   return `event-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
+
+
+
+
+
+
+
+
+
+
 
 
 

@@ -14,6 +14,10 @@ export function createEventDisplay({ detectorGeometry, scene, mrdLayers, fmvLaye
   hitMarkerGroup.name = "detector hit display";
   scene.add(hitMarkerGroup);
 
+  const neutronGroup = new THREE.Group();
+  neutronGroup.name = "delayed neutron display";
+  scene.add(neutronGroup);
+
   const mrdBaseStates = captureMrdStates(mrdLayers);
   const fmvBaseStates = captureFmvStates(fmvLayers);
   const pmtBaseStates = captureBaseStates(pmtMeshes);
@@ -50,6 +54,7 @@ export function createEventDisplay({ detectorGeometry, scene, mrdLayers, fmvLaye
   function clearEvent() {
     eventGroup.clear();
     coneGroup.clear();
+    neutronGroup.clear();
     resetDetectorHits();
     restoreMrdStates(mrdLayers, mrdBaseStates);
     restoreFmvStates(fmvLayers, fmvBaseStates);
@@ -62,6 +67,19 @@ export function createEventDisplay({ detectorGeometry, scene, mrdLayers, fmvLaye
     }
 
     addCherenkovCone(coneGroup, event, detectorGeometry.tank);
+  }
+
+  function setDelayedNeutronsVisible(event, visible) {
+    neutronGroup.clear();
+    if (!visible) {
+      return;
+    }
+    addNeutronTimelineStep(neutronGroup, event.truth?.neutrons ?? [], 6);
+  }
+
+  function setNeutronTimelineStep(event, step) {
+    neutronGroup.clear();
+    addNeutronTimelineStep(neutronGroup, event.truth?.neutrons ?? [], step);
   }
 
   function showDetectorHits(response) {
@@ -90,10 +108,64 @@ export function createEventDisplay({ detectorGeometry, scene, mrdLayers, fmvLaye
     clearEvent,
     resetDetectorHits,
     setCherenkovConeVisible,
+    setDelayedNeutronsVisible,
+    setNeutronTimelineStep,
     showDetectorHits,
   };
 }
 
+
+function addNeutronTimelineStep(group, neutrons, step) {
+  if (step <= 1) {
+    return;
+  }
+
+  for (const neutron of neutrons) {
+    const points = neutron.timelinePoints ?? [neutron.birthPosition, neutron.capturePosition];
+    const endIndex = step >= 6 ? points.length - 1 : Math.min(step - 1, points.length - 2);
+    for (let i = 1; i <= endIndex; i += 1) {
+      addDashedLine(group, points[i - 1], points[i], 0xff2d2d, 0.026, true);
+    }
+
+    if (step >= 6) {
+      addGdCapture(group, points[points.length - 1]);
+    } else {
+      addNeutronMarker(group, points[endIndex]);
+    }
+  }
+}
+
+function addNeutronMarker(group, positionArray) {
+  const geometry = new THREE.SphereGeometry(0.08, 20, 12);
+  const material = new THREE.MeshStandardMaterial({
+    color: 0x9ca3af,
+    emissive: 0x5f6673,
+    emissiveIntensity: 0.5,
+  });
+  const marker = new THREE.Mesh(geometry, material);
+  marker.position.fromArray(positionArray);
+  marker.name = "timeline neutron";
+  group.add(marker);
+}
+function addDelayedNeutrons(group, neutrons) {
+  for (const neutron of neutrons) {
+    addDashedLine(group, neutron.birthPosition, neutron.capturePosition, 0xb8ff6a);
+    addGdCapture(group, neutron.capturePosition);
+  }
+}
+
+function addGdCapture(group, positionArray) {
+  const geometry = new THREE.SphereGeometry(0.085, 24, 16);
+  const material = new THREE.MeshStandardMaterial({
+    color: 0xc8ff3d,
+    emissive: 0x93ff32,
+    emissiveIntensity: 1.8,
+  });
+  const marker = new THREE.Mesh(geometry, material);
+  marker.position.fromArray(positionArray);
+  marker.name = "Gd capture";
+  group.add(marker);
+}
 function addVertex(group, positionArray) {
   const geometry = new THREE.SphereGeometry(0.075, 24, 16);
   const material = new THREE.MeshStandardMaterial({
@@ -106,7 +178,7 @@ function addVertex(group, positionArray) {
   group.add(vertex);
 }
 
-function addSolidLine(group, startArray, endArray, color, radius) {
+function addSolidLine(group, startArray, endArray, color, radius, overlay = false) {
   const start = new THREE.Vector3().fromArray(startArray);
   const end = new THREE.Vector3().fromArray(endArray);
   const midpoint = start.clone().add(end).multiplyScalar(0.5);
@@ -115,15 +187,18 @@ function addSolidLine(group, startArray, endArray, color, radius) {
   const material = new THREE.MeshStandardMaterial({
     color,
     emissive: color,
-    emissiveIntensity: 0.35,
+    emissiveIntensity: overlay ? 1.35 : 0.35,
+    depthTest: !overlay,
+    depthWrite: !overlay,
   });
   const line = new THREE.Mesh(geometry, material);
   line.position.copy(midpoint);
   line.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), end.clone().sub(start).normalize());
+  line.renderOrder = overlay ? 20 : 0;
   group.add(line);
 }
 
-function addDashedLine(group, startArray, endArray, color) {
+function addDashedLine(group, startArray, endArray, color, radius = 0.012, overlay = false) {
   const start = new THREE.Vector3().fromArray(startArray);
   const end = new THREE.Vector3().fromArray(endArray);
   const direction = end.clone().sub(start);
@@ -136,7 +211,7 @@ function addDashedLine(group, startArray, endArray, color) {
   while (distance < totalLength) {
     const segmentStart = start.clone().add(unit.clone().multiplyScalar(distance));
     const segmentEnd = start.clone().add(unit.clone().multiplyScalar(Math.min(distance + dashLength, totalLength)));
-    addSolidLine(group, segmentStart.toArray(), segmentEnd.toArray(), color, 0.012);
+    addSolidLine(group, segmentStart.toArray(), segmentEnd.toArray(), color, radius, overlay);
     distance += dashLength + gapLength;
   }
 }
@@ -408,3 +483,13 @@ function tintMesh(group, color, emissive, emissiveIntensity) {
     }
   }
 }
+
+
+
+
+
+
+
+
+
+
