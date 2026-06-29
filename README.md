@@ -1,6 +1,16 @@
-# ANNIE Interactive Event Display
+# ANNIE Educational Event Display
 
-Interactive 3D and 2D event visualization for the Accelerator Neutrino Neutron Interaction Experiment (ANNIE).
+Interactive educational simulator for visualizing neutrino interactions in the ANNIE detector.
+
+---
+**Disclaimer**
+
+This project is an educational simulator developed for outreach and teaching.
+
+It is **not** the official ANNIE event display or reconstruction software.
+
+Detector geometry, detector response, and event generation are intentionally simplified for visualization and educational purposes.
+---
 
 ## Description
 
