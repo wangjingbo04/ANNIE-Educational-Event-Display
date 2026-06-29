@@ -3,7 +3,9 @@ const WALL_WIDTH = 640;
 const WALL_HEIGHT = 300;
 const CAP_SIZE = 180;
 const MRD_WIDTH = 420;
-const MRD_HEIGHT = 250;
+const MRD_HEIGHT = 230;
+const FMV_STRIP_WIDTH = 260;
+const FMV_STRIP_HEIGHT = 72;
 
 export function initEventDisplay2D({ container, detectorGeometry }) {
   let currentEvent = null;
@@ -59,31 +61,28 @@ export function initEventDisplay2D({ container, detectorGeometry }) {
             </section>
             <section class="event-mrd-column" aria-label="ANNIE event projections">
               <h3>ANNIE Event View</h3>
-              <div class="event-annie-view-grid">
-                <div class="event-fmv-column" aria-label="Front Muon Veto layers">
-                  <figure class="event-mrd-panel">
-                    <figcaption>FMV Horizontal Layer</figcaption>
-                    <div id="fmv-horizontal-map" class="event-svg-wrap"></div>
-                  </figure>
-                  <figure class="event-mrd-panel">
-                    <figcaption>FMV Vertical Layer</figcaption>
-                    <div id="fmv-vertical-map" class="event-svg-wrap"></div>
-                  </figure>
-                </div>
-                <div class="event-mrd-views" aria-label="Muon Range Detector projections">
-                  <figure class="event-mrd-panel">
-                    <figcaption>MRD Side View</figcaption>
-                    <div id="mrd-side-map" class="event-svg-wrap"></div>
-                  </figure>
-                  <figure class="event-mrd-panel">
-                    <figcaption>MRD Top View</figcaption>
-                    <div id="mrd-top-map" class="event-svg-wrap"></div>
-                  </figure>
-                </div>
+              <div class="event-fmv-strip-row" aria-label="Front Muon Veto compact layers">
+                <figure class="event-fmv-strip-panel">
+                  <figcaption>FMV Horizontal Layer</figcaption>
+                  <div id="fmv-horizontal-map" class="event-svg-wrap"></div>
+                </figure>
+                <figure class="event-fmv-strip-panel">
+                  <figcaption>FMV Vertical Layer</figcaption>
+                  <div id="fmv-vertical-map" class="event-svg-wrap"></div>
+                </figure>
               </div>
+              <figure class="event-mrd-panel">
+                <figcaption>MRD Side View</figcaption>
+                <div id="mrd-side-map" class="event-svg-wrap"></div>
+              </figure>
+              <figure class="event-mrd-panel">
+                <figcaption>MRD Top View</figcaption>
+                <div id="mrd-top-map" class="event-svg-wrap"></div>
+              </figure>
             </section>
           </div>
         </div>
+        <p class="event-display-note">Note: FMV shows the front muon veto paddles. In 2D views, FMV is upstream of the water tank (smaller Z).</p>
       </div>
     `;
 
@@ -169,47 +168,44 @@ export function initEventDisplay2D({ container, detectorGeometry }) {
   }
 
   function renderFmvView(root, event, orientation) {
-    const svg = makeSvg(MRD_WIDTH, 94);
-    const margin = { left: 28, right: 16, top: 16, bottom: 20 };
+    const svg = makeSvg(FMV_STRIP_WIDTH, FMV_STRIP_HEIGHT);
+    const margin = { left: 10, right: 10, top: 18, bottom: 26 };
     const plot = {
       x: margin.left,
       y: margin.top,
-      width: MRD_WIDTH - margin.left - margin.right,
-      height: 94 - margin.top - margin.bottom,
+      width: FMV_STRIP_WIDTH - margin.left - margin.right,
+      height: 22,
     };
     const fmv = detectorGeometry.frontVeto;
     const hits = event.observables.fmvHits ?? [];
     const layerIndex = orientation === "horizontal" ? 0 : 1;
     const layerHits = hits.filter((hit) => hit.layerIndex === layerIndex);
 
-    addRect(svg, plot.x, plot.y, plot.width, plot.height, "event-map-bg");
     for (let i = 0; i < fmv.paddleCountPerLayer; i += 1) {
       const active = layerHits.some((hit) => hit.paddleIndex === i);
-      if (orientation === "horizontal") {
-        const h = plot.height / fmv.paddleCountPerLayer;
-        addRect(svg, plot.x, plot.y + i * h + 1, plot.width, Math.max(1, h - 2), active ? "#ffd34d" : "#24434b", "event-hit-paddle");
-      } else {
-        const w = plot.width / fmv.paddleCountPerLayer;
-        addRect(svg, plot.x + i * w + 1, plot.y, Math.max(1, w - 2), plot.height, active ? "#ffd34d" : "#24434b", "event-hit-paddle");
-      }
+      const w = plot.width / fmv.paddleCountPerLayer;
+      addRect(svg, plot.x + i * w + 1, plot.y, Math.max(1, w - 2), plot.height, active ? "#ffd34d" : "#24434b", "event-hit-paddle");
     }
-    addAxisLabel(svg, plot.x + plot.width / 2, 88, orientation === "horizontal" ? "Horizontal paddles stacked in Y" : "Vertical paddles arranged in X", "middle");
+    addAxisLabel(svg, plot.x + plot.width / 2, 58, orientation === "horizontal" ? "Horizontal paddles stacked in Y" : "Vertical paddles arranged in X", "middle");
     root.appendChild(svg);
   }
   function renderMrdSideView(root, event) {
     const svg = makeSvg(MRD_WIDTH, MRD_HEIGHT);
-    const margin = { left: 36, right: 18, top: 18, bottom: 34 };
+    const margin = { left: 48, right: 18, top: 18, bottom: 34 };
     const plot = makeMrdPlot(margin);
     const tank = detectorGeometry.tank;
     const mrd = detectorGeometry.mrd;
-    const yMin = tank.centerMeters[1] - Math.max(tank.heightMeters, mrd.heightMeters) / 2 - 0.2;
-    const yMax = tank.centerMeters[1] + Math.max(tank.heightMeters, mrd.heightMeters) / 2 + 0.2;
-    const zMin = -tank.radiusMeters - 0.25;
+    const fmv = detectorGeometry.frontVeto;
+    const sideSpanY = Math.max(tank.heightMeters, mrd.heightMeters, fmv.heightMeters);
+    const yMin = tank.centerMeters[1] - sideSpanY / 2 - 0.2;
+    const yMax = tank.centerMeters[1] + sideSpanY / 2 + 0.2;
+    const zMin = fmv.zMeters - 0.22;
     const zMax = mrd.startZMeters + mrd.totalDepthMeters + 0.35;
     const sx = (z) => plot.x + ((z - zMin) / (zMax - zMin)) * plot.width;
     const sy = (y) => plot.y + (1 - (y - yMin) / (yMax - yMin)) * plot.height;
 
     addRect(svg, plot.x, plot.y, plot.width, plot.height, "event-map-bg");
+    drawFmvProjection(svg, event, sx, sy, "side");
     addRect(svg, sx(-tank.radiusMeters), sy(tank.centerMeters[1] + tank.heightMeters / 2), sx(tank.radiusMeters) - sx(-tank.radiusMeters), sy(tank.centerMeters[1] - tank.heightMeters / 2) - sy(tank.centerMeters[1] + tank.heightMeters / 2), "event-tank-outline");
     addRect(svg, sx(mrd.startZMeters), sy(tank.centerMeters[1] + mrd.heightMeters / 2), sx(mrd.startZMeters + mrd.totalDepthMeters) - sx(mrd.startZMeters), sy(tank.centerMeters[1] - mrd.heightMeters / 2) - sy(tank.centerMeters[1] + mrd.heightMeters / 2), "event-mrd-outline");
     drawMrdHits(svg, event, sx, sy, "side");
@@ -218,23 +214,27 @@ export function initEventDisplay2D({ container, detectorGeometry }) {
     }
     addAxisLabel(svg, plot.x + plot.width / 2, MRD_HEIGHT - 9, "Z beam/downstream", "middle");
     addAxisLabel(svg, 12, plot.y + plot.height / 2, "Y", "middle", -90);
+    addText(svg, sx(fmv.zMeters), plot.y - 5, "FMV", "event-small-label", "middle");
     root.appendChild(svg);
   }
 
   function renderMrdTopView(root, event) {
     const svg = makeSvg(MRD_WIDTH, MRD_HEIGHT);
-    const margin = { left: 36, right: 18, top: 18, bottom: 34 };
+    const margin = { left: 48, right: 18, top: 18, bottom: 34 };
     const plot = makeMrdPlot(margin);
     const tank = detectorGeometry.tank;
     const mrd = detectorGeometry.mrd;
-    const xMin = -Math.max(tank.radiusMeters, mrd.widthXMeters / 2) - 0.35;
-    const xMax = Math.max(tank.radiusMeters, mrd.widthXMeters / 2) + 0.35;
-    const zMin = -tank.radiusMeters - 0.25;
+    const fmv = detectorGeometry.frontVeto;
+    const topSpanX = Math.max(tank.radiusMeters, mrd.widthXMeters / 2, fmv.widthXMeters / 2);
+    const xMin = -topSpanX - 0.35;
+    const xMax = topSpanX + 0.35;
+    const zMin = fmv.zMeters - 0.22;
     const zMax = mrd.startZMeters + mrd.totalDepthMeters + 0.35;
     const sx = (z) => plot.x + ((z - zMin) / (zMax - zMin)) * plot.width;
     const sy = (x) => plot.y + (1 - (x - xMin) / (xMax - xMin)) * plot.height;
 
     addRect(svg, plot.x, plot.y, plot.width, plot.height, "event-map-bg");
+    drawFmvProjection(svg, event, sx, sy, "top");
     addCircle(svg, sx(0), sy(0), Math.abs(sx(tank.radiusMeters) - sx(0)), "none", "event-tank-outline");
     addRect(svg, sx(mrd.startZMeters), sy(mrd.widthXMeters / 2), sx(mrd.startZMeters + mrd.totalDepthMeters) - sx(mrd.startZMeters), sy(-mrd.widthXMeters / 2) - sy(mrd.widthXMeters / 2), "event-mrd-outline");
     drawMrdHits(svg, event, sx, sy, "top");
@@ -243,9 +243,29 @@ export function initEventDisplay2D({ container, detectorGeometry }) {
     }
     addAxisLabel(svg, plot.x + plot.width / 2, MRD_HEIGHT - 9, "Z beam/downstream", "middle");
     addAxisLabel(svg, 12, plot.y + plot.height / 2, "X", "middle", -90);
+    addText(svg, sx(fmv.zMeters), plot.y - 5, "FMV", "event-small-label", "middle");
     root.appendChild(svg);
   }
 
+  function drawFmvProjection(svg, event, sx, sy, view) {
+    const fmvHit = (event.observables.fmvHits ?? []).length > 0;
+    const tank = detectorGeometry.tank;
+    const fmv = detectorGeometry.frontVeto;
+    const z = -tank.radiusMeters - 0.08;
+    const fill = fmvHit ? "#ffd34d" : "#24434b";
+    const planeWidth = 4;
+
+    if (view === "side") {
+      const yTop = tank.centerMeters[1] + Math.min(tank.heightMeters, fmv.heightMeters) / 2;
+      const yBottom = tank.centerMeters[1] - Math.min(tank.heightMeters, fmv.heightMeters) / 2;
+      addRect(svg, sx(z) - planeWidth / 2, sy(yTop), planeWidth, Math.max(3, sy(yBottom) - sy(yTop)), fill, "event-hit-paddle");
+      return;
+    }
+
+    const xLeft = -Math.min(tank.radiusMeters * 2, fmv.widthXMeters) / 2;
+    const xRight = Math.min(tank.radiusMeters * 2, fmv.widthXMeters) / 2;
+    addRect(svg, sx(z) - planeWidth / 2, sy(xRight), planeWidth, Math.max(3, sy(xLeft) - sy(xRight)), fill, "event-hit-paddle");
+  }
   function drawMrdHits(svg, event, sx, sy, view) {
     const hits = event.observables.crossedMrdLayers ?? [];
     const mrd = detectorGeometry.mrd;
@@ -507,3 +527,9 @@ function addText(svg, x, y, text, className, anchor = "start", rotation = 0) {
 function addAxisLabel(svg, x, y, text, anchor, rotation = 0) {
   return addText(svg, x, y, text, "event-axis-label", anchor, rotation);
 }
+
+
+
+
+
+
