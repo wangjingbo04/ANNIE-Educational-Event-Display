@@ -340,11 +340,11 @@ function lightFmvLayers(fmvLayers, fmvHits = []) {
     const layer = fmvLayers?.[hit.plane]?.[hit.layerIndex];
     const paddle = layer?.paddles?.[hit.paddleIndex];
     if (paddle) {
-      paddle.material.color.setHex(0xffd34d);
-      paddle.material.emissive?.setHex(0xffa000);
-      paddle.material.emissiveIntensity = 1.35;
+      paddle.material.color.setHex(0xff9b2f);
+      paddle.material.emissive?.setHex(0xff6a00);
+      paddle.material.emissiveIntensity = 1.15;
       if ("opacity" in paddle.material) {
-        paddle.material.opacity = 0.95;
+        paddle.material.opacity = 0.88;
       }
     }
   }
@@ -489,6 +489,10 @@ function tintMesh(group, color, emissive, emissiveIntensity) {
     }
   }
 }
+
+
+
+
 
 
 

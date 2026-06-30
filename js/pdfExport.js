@@ -5,13 +5,15 @@ export async function exportCurrentView({ format, view, sceneDisplay, eventDispl
 
   const extension = format === "jpeg" ? "jpg" : "png";
   const mimeType = format === "jpeg" ? "image/jpeg" : "image/png";
+  const filename = `${timestampedFilename()}.${extension}`;
 
   try {
     const dataUrl = view === "event-display"
       ? await captureEventDisplayAsImage(mimeType)
       : await convertImageDataUrl(sceneDisplay.captureImage(), mimeType);
 
-    downloadDataUrl(dataUrl, `${timestampedFilename()}.${extension}`);
+    if (!dataUrl) return false;
+    downloadDataUrl(dataUrl, filename);
     return true;
   } catch (error) {
     console.warn("Export failed", error);
@@ -42,19 +44,25 @@ export function exportCurrentViewToPdf({ view, sceneDisplay, eventDisplay2D, eve
         <link rel="stylesheet" href="css/eventDisplay.css" />
         <style>
           @page { size: landscape; margin: 0.35in; }
-          html, body { width: auto; height: auto; overflow: visible; background: #0c0f12; }
-          body { padding: 0; color: #eef4f7; font-family: Arial, Helvetica, sans-serif; }
+          html, body { width: auto; height: auto; overflow: visible; background: #ffffff; }
+          body { padding: 0; color: #111111; font-family: Arial, Helvetica, sans-serif; }
           .pdf-page { display: grid; gap: 12px; }
-          .pdf-title { display: flex; align-items: end; justify-content: space-between; gap: 16px; border-bottom: 1px solid #34404a; padding-bottom: 8px; }
+          .pdf-title { display: flex; align-items: end; justify-content: space-between; gap: 16px; border-bottom: 1px solid #444444; padding-bottom: 8px; }
           .pdf-title h1 { margin: 0; font-size: 18px; letter-spacing: 0; }
-          .pdf-title p { margin: 0; color: #9fb0bb; font-size: 11px; }
-          .pdf-scene-image { width: 100%; max-height: 7in; object-fit: contain; border: 1px solid #34404a; border-radius: 8px; background: #0c0f12; }
+          .pdf-title p { margin: 0; color: #444444; font-size: 11px; }
+          .pdf-scene-image { width: 100%; max-height: 7in; object-fit: contain; border: 1px solid #444444; border-radius: 8px; background: #ffffff; }
           .pdf-event-display #event-display-container { height: auto; overflow: visible; }
           .pdf-event-display .event-display-scroll { height: auto; overflow: visible; padding: 0; }
           .pdf-event-display .event-display-header { margin-top: 0; }
           .pdf-event-display .event-display-figure { max-width: none; }
           .pdf-event-display .event-svg-wrap svg { max-height: none; }
-          .pdf-note { color: #9fb0bb; font-size: 10px; }
+          .pdf-event-display, .pdf-event-display * { color: #111111 !important; }
+          .pdf-event-display .event-display-scroll, .pdf-event-display .event-display-figure, .pdf-event-display section, .pdf-event-display figure { background: #ffffff !important; border-color: #444444 !important; }
+          .pdf-event-display svg text { fill: #111111 !important; }
+          .pdf-event-display .event-map-bg { fill: #ffffff !important; }
+          .pdf-event-display .event-tank-outline, .pdf-event-display .event-mrd-outline, .pdf-event-display .event-cap-outline { stroke: #333333 !important; }
+          
+          .pdf-note { color: #444444; font-size: 10px; }
           @media print {
             body { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
             button { display: none; }
@@ -130,7 +138,7 @@ async function captureEventDisplayAsImage(mimeType) {
   canvas.height = height * scale;
   const context = canvas.getContext("2d");
   context.scale(scale, scale);
-  context.fillStyle = "#0c0f12";
+  context.fillStyle = "#ffffff";
   context.fillRect(0, 0, width, height);
 
   await drawDomText(context, source, sourceRect);
@@ -138,8 +146,10 @@ async function captureEventDisplayAsImage(mimeType) {
   for (const svg of svgs) {
     const rect = svg.getBoundingClientRect();
     if (rect.width <= 0 || rect.height <= 0) continue;
+    const x = rect.left - sourceRect.left;
+    const y = rect.top - sourceRect.top;
     const image = await svgElementToImage(svg);
-    context.drawImage(image, rect.left - sourceRect.left, rect.top - sourceRect.top, rect.width, rect.height);
+    context.drawImage(image, x, y, rect.width, rect.height);
   }
 
   return canvas.toDataURL(mimeType, mimeType === "image/jpeg" ? 0.95 : undefined);
@@ -155,7 +165,7 @@ async function drawDomText(context, source, sourceRect) {
     const fontSize = parseFloat(style.fontSize) || 12;
     const fontWeight = style.fontWeight || "400";
     const fontFamily = style.fontFamily || "Arial, sans-serif";
-    context.fillStyle = style.color || "#eef4f7";
+    context.fillStyle = "#111111";
     context.font = `${fontWeight} ${fontSize}px ${fontFamily}`;
     context.textAlign = style.textAlign === "center" ? "center" : "left";
     context.textBaseline = "top";
@@ -186,6 +196,7 @@ function svgElementToImage(svg) {
   return new Promise((resolve, reject) => {
     const clone = svg.cloneNode(true);
     inlineSvgStyles(svg, clone);
+    removeZeroPePmts(clone);
     const rect = svg.getBoundingClientRect();
     clone.setAttribute("xmlns", "http://www.w3.org/2000/svg");
     clone.setAttribute("width", Math.ceil(rect.width));
@@ -206,17 +217,43 @@ function svgElementToImage(svg) {
   });
 }
 
+function removeZeroPePmts(svg) {
+  svg.querySelectorAll(".event-pmt-circle").forEach((circle) => {
+    const title = circle.querySelector("title")?.textContent ?? "";
+    const match = title.match(/:\s*([0-9.]+)\s*PE/i);
+    const charge = match ? Number(match[1]) : 0;
+    if (!Number.isFinite(charge) || charge <= 0) {
+      circle.remove();
+    }
+  });
+}
 function inlineSvgStyles(sourceNode, cloneNode) {
   const sourceNodes = [sourceNode, ...sourceNode.querySelectorAll("*")];
   const cloneNodes = [cloneNode, ...cloneNode.querySelectorAll("*")];
   sourceNodes.forEach((source, index) => {
     const clone = cloneNodes[index];
+    if (!clone) return;
     const style = window.getComputedStyle(source);
     const properties = ["fill", "stroke", "stroke-width", "stroke-opacity", "fill-opacity", "opacity", "font-size", "font-family", "font-weight", "text-anchor"];
-    clone.setAttribute("style", properties.map((property) => `${property}:${style.getPropertyValue(property)};`).join(""));
+    const className = source.getAttribute("class") || "";
+    const tagName = source.tagName.toLowerCase();
+    const styleText = properties.map((property) => `${property}:${style.getPropertyValue(property)};`).join("");
+    clone.setAttribute("style", `${styleText}${exportSvgOverrideStyle(tagName, className)}`);
   });
 }
 
+function exportSvgOverrideStyle(tagName, className) {
+  if (tagName === "text") {
+    return "fill:#111111;";
+  }
+  if (className.includes("event-map-bg")) {
+    return "fill:#ffffff;stroke:#444444;";
+  }
+  if (className.includes("outline") || className.includes("axis") || className.includes("grid")) {
+    return "stroke:#333333;";
+  }
+  return "";
+}
 function svgToDataUrl(svg, width, height, mimeType) {
   return new Promise((resolve) => {
     const image = new Image();
@@ -229,7 +266,7 @@ function svgToDataUrl(svg, width, height, mimeType) {
       canvas.width = width * scale;
       canvas.height = height * scale;
       const context = canvas.getContext("2d");
-      context.fillStyle = "#0c0f12";
+      context.fillStyle = "#ffffff";
       context.fillRect(0, 0, canvas.width, canvas.height);
       context.scale(scale, scale);
       context.drawImage(image, 0, 0);
@@ -253,7 +290,7 @@ function convertImageDataUrl(dataUrl, mimeType) {
       canvas.width = image.naturalWidth;
       canvas.height = image.naturalHeight;
       const context = canvas.getContext("2d");
-      context.fillStyle = "#0c0f12";
+      context.fillStyle = "#ffffff";
       context.fillRect(0, 0, canvas.width, canvas.height);
       context.drawImage(image, 0, 0);
       resolve(canvas.toDataURL(mimeType, 0.95));
@@ -276,6 +313,19 @@ function timestampedFilename() {
   const pad = (value) => String(value).padStart(2, "0");
   return `ANNIE_Event_Display_${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}_${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

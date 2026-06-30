@@ -400,7 +400,7 @@ export function initUI({ statusText, sceneDisplay, eventDisplay2D, setView }) {
     });
     statusText.textContent = exported
       ? `Exported current display as ${format.toUpperCase()}`
-      : "Export was blocked by the browser";
+      : "Export canceled or failed";
     exportAsSelect.value = "";
   });
 
@@ -626,6 +626,8 @@ function formatNeutronTruth(neutrons = []) {
 function capitalize(text) {
   return text.charAt(0).toUpperCase() + text.slice(1);
 }
+
+
 
 
 

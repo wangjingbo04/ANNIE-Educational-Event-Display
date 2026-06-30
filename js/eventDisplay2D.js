@@ -186,7 +186,7 @@ export function initEventDisplay2D({ container, detectorGeometry }) {
     for (let i = 0; i < fmv.paddleCountPerLayer; i += 1) {
       const active = layerHits.some((hit) => hit.paddleIndex === i);
       const w = plot.width / fmv.paddleCountPerLayer;
-      addRect(svg, plot.x + i * w + 1, plot.y, Math.max(1, w - 2), plot.height, active ? "#ffd34d" : "#24434b", "event-hit-paddle");
+      addRect(svg, plot.x + i * w + 1, plot.y, Math.max(1, w - 2), plot.height, active ? "#ff702d" : "#24434b", "event-hit-paddle");
     }
     addAxisLabel(svg, plot.x + plot.width / 2, 58, orientation === "horizontal" ? "Horizontal paddles" : "Vertical paddles", "middle");
     root.appendChild(svg);
@@ -311,7 +311,7 @@ export function initEventDisplay2D({ container, detectorGeometry }) {
     const tank = detectorGeometry.tank;
     const fmv = detectorGeometry.frontVeto;
     const z = -tank.radiusMeters - 0.08;
-    const fill = fmvHit ? "#ffd34d" : "#24434b";
+    const fill = fmvHit ? "#ff702d" : "#24434b";
     const planeWidth = 4;
 
     if (view === "side") {
@@ -634,6 +634,10 @@ function addText(svg, x, y, text, className, anchor = "start", rotation = 0) {
 function addAxisLabel(svg, x, y, text, anchor, rotation = 0) {
   return addText(svg, x, y, text, "event-axis-label", anchor, rotation);
 }
+
+
+
+
 
 
 
