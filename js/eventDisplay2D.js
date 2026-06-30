@@ -188,7 +188,7 @@ export function initEventDisplay2D({ container, detectorGeometry }) {
       const w = plot.width / fmv.paddleCountPerLayer;
       addRect(svg, plot.x + i * w + 1, plot.y, Math.max(1, w - 2), plot.height, active ? "#ffd34d" : "#24434b", "event-hit-paddle");
     }
-    addAxisLabel(svg, plot.x + plot.width / 2, 58, orientation === "horizontal" ? "Horizontal paddles stacked in Y" : "Vertical paddles arranged in X", "middle");
+    addAxisLabel(svg, plot.x + plot.width / 2, 58, orientation === "horizontal" ? "Horizontal paddles" : "Vertical paddles", "middle");
     root.appendChild(svg);
   }
 
@@ -241,6 +241,7 @@ export function initEventDisplay2D({ container, detectorGeometry }) {
     drawMrdHits(svg, event, sx, sy, "side");
     if (showTruth) {
       drawTrack(svg, event, sx, sy, "zy");
+      drawSecondaryTracks(svg, event, sx, sy, "zy");
     }
     addAxisLabel(svg, plot.x + plot.width / 2, MRD_HEIGHT - 9, "Z beam/downstream", "middle");
     addAxisLabel(svg, 12, plot.y + plot.height / 2, "Y", "middle", -90);
@@ -272,6 +273,7 @@ export function initEventDisplay2D({ container, detectorGeometry }) {
     drawMrdHits(svg, event, sx, sy, "top");
     if (showTruth) {
       drawTrack(svg, event, sx, sy, "zx");
+      drawSecondaryTracks(svg, event, sx, sy, "zx");
     }
     addAxisLabel(svg, plot.x + plot.width / 2, MRD_HEIGHT - 9, "Z beam/downstream", "middle");
     addAxisLabel(svg, 12, plot.y + plot.height / 2, "X", "middle", -90);
@@ -366,6 +368,25 @@ export function initEventDisplay2D({ container, detectorGeometry }) {
     addLine(svg, x1, y1, x2, y2, "event-reco-track");
   }
 
+  function drawSecondaryTracks(svg, event, sx, sy, projection) {
+    const tracks = event.display.secondaryTracks ?? [];
+    tracks.forEach((track) => {
+      const start = track.startPosition;
+      const end = track.endPosition;
+      const x1 = sx(start[2]);
+      const y1 = projection === "zy" ? sy(start[1]) : sy(start[0]);
+      const x2 = sx(end[2]);
+      const y2 = projection === "zy" ? sy(end[1]) : sy(end[0]);
+      addStrokeLine(svg, x1, y1, x2, y2, colorToCss(track.color ?? 0xff4fd8));
+    });
+  }
+
+  function colorToCss(color) {
+    if (typeof color === "string") {
+      return color;
+    }
+    return `#${color.toString(16).padStart(6, "0")}`;
+  }
   function drawFootprintMarkerOnWall(svg, event, plot, yMin, yMax) {
     const marker = getFootprintMarker(event, detectorGeometry.tank);
     if (!marker || marker.surface !== "wall") {
@@ -613,6 +634,10 @@ function addText(svg, x, y, text, className, anchor = "start", rotation = 0) {
 function addAxisLabel(svg, x, y, text, anchor, rotation = 0) {
   return addText(svg, x, y, text, "event-axis-label", anchor, rotation);
 }
+
+
+
+
 
 
 

@@ -43,6 +43,12 @@ export function createEventDisplay({ detectorGeometry, scene, mrdLayers, fmvLaye
       addSolidLine(eventGroup, event.display.cosmicTrack.start, event.display.cosmicTrack.end, 0xc77dff, 0.014);
     }
 
+    if (showTruthTracks && event.display.secondaryTracks?.length) {
+      event.display.secondaryTracks.forEach((track) => {
+        addSolidLine(eventGroup, track.startPosition, track.endPosition, track.color ?? 0xc77dff, 0.007);
+      });
+    }
+
     lightMrdLayers(mrdLayers, event.observables.crossedMrdLayers);
     lightFmvLayers(fmvLayers, event.observables.fmvHits);
 
@@ -483,6 +489,9 @@ function tintMesh(group, color, emissive, emissiveIntensity) {
     }
   }
 }
+
+
+
 
 
 

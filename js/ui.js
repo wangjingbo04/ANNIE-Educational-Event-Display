@@ -1,6 +1,6 @@
 import { generateEvent, getEventOptions } from "./eventGenerator.js";
 import { simulateDetectorResponse } from "./detectorResponse.js";
-import { exportCurrentViewToPdf } from "./pdfExport.js";
+import { exportCurrentView } from "./pdfExport.js";
 
 export function initUI({ statusText, sceneDisplay, eventDisplay2D, setView }) {
   const controlsRoot = document.querySelector("#event-controls");
@@ -11,6 +11,15 @@ export function initUI({ statusText, sceneDisplay, eventDisplay2D, setView }) {
   let score = { correct: 0, incorrect: 0 };
   let hasGuessedCurrentEvent = false;
   let currentTimelineStep = 1;
+  let buildStepIndex = 0;
+  const buildModules = [
+    { id: "waterTank", text: "Target material where neutrinos can interact." },
+    { id: "pmts", text: "Detect Cherenkov light produced by charged particles in water." },
+    { id: "fmv", text: "Tags particles entering from outside the detector." },
+    { id: "mrd", text: "Tracks and ranges outgoing muons." },
+    { id: "gdWater", text: "Helps capture delayed neutrons after neutrino interactions." },
+    { id: "fiducialVolume", text: "Defines the clean inner analysis region used for signal selection." },
+  ];
 
   controlsRoot.innerHTML = `
     <label class="field">
@@ -41,6 +50,16 @@ export function initUI({ statusText, sceneDisplay, eventDisplay2D, setView }) {
       </select>
     </label>
     <label class="field">
+      <span>Interaction Mode</span>
+      <select id="interaction-mode">
+        <option value="Random">Random</option>
+        <option value="CCQE">CCQE</option>
+        <option value="RES">RES</option>
+        <option value="DIS">DIS</option>
+      </select>
+    </label>
+    <p class="control-note">Interaction Mode applies only to neutrino-water interactions.</p>
+    <label class="field">
       <span>Noise level</span>
       <select id="noise-level">
         ${options.noiseLevels.map((level) => `<option value="${level}">${capitalize(level)}</option>`).join("")}
@@ -50,8 +69,14 @@ export function initUI({ statusText, sceneDisplay, eventDisplay2D, setView }) {
       <button id="run-event" type="button">Run Event</button>
       <button id="reset-event" type="button">Reset Event</button>
       <button id="reveal-truth" type="button" disabled>Reveal Truth</button>
-      <button id="export-pdf" type="button">Export PDF</button>
+      <select id="export-as" aria-label="Export As">
+        <option value="">Export As ▾</option>
+        <option value="png">PNG (.png)</option>
+        <option value="jpeg">JPEG (.jpg)</option>
+        <option value="pdf">PDF (.pdf)</option>
+      </select>
       <button id="reset-view" type="button">Reset View</button>
+      <button id="build-detector" type="button">Build Detector</button>
       <button id="set-default-view" type="button">Set Current View as Default</button>
       <button id="copy-camera-json" type="button">Copy Camera JSON</button>
     </div>
@@ -82,6 +107,23 @@ export function initUI({ statusText, sceneDisplay, eventDisplay2D, setView }) {
         <dt>Current detector time</dt><dd id="neutron-time-readout">0 ns</dd>
       </dl>
     </div>
+    <section id="build-detector-panel" class="classification-panel" hidden>
+      <h3>Build the ANNIE Detector</h3>
+      <div class="button-row">
+        <button type="button" data-build-module="waterTank">Water Tank</button>
+        <button type="button" data-build-module="pmts">PMTs</button>
+        <button type="button" data-build-module="fmv">Front Muon Veto (FMV)</button>
+        <button type="button" data-build-module="mrd">Muon Range Detector (MRD)</button>
+        <button type="button" data-build-module="gdWater">Gadolinium-loaded Water</button>
+        <button type="button" data-build-module="fiducialVolume">Fiducial Volume</button>
+      </div>
+      <p id="build-detector-explanation" class="control-note">Click a detector module or Build Next.</p>
+      <div class="button-row">
+        <button id="build-next" type="button">Build Next</button>
+        <button id="show-all-detector" type="button">Show All</button>
+        <button id="reset-build" type="button">Reset Build</button>
+      </div>
+    </section>
     <p class="control-note">Classification game: decide whether the unknown event is Signal or Background. Dirt backgrounds can leave FMV hits before the water; cosmic muons enter from above without a top veto. MRD detects muon tracks, not Cherenkov light.</p>
     <div class="classification-panel">
       <h3>Student Challenge</h3>
@@ -102,12 +144,19 @@ export function initUI({ statusText, sceneDisplay, eventDisplay2D, setView }) {
 
   const energySelect = controlsRoot.querySelector("#neutrino-energy");
   const eventTypeSelect = controlsRoot.querySelector("#event-type");
+  const interactionModeSelect = controlsRoot.querySelector("#interaction-mode");
   const noiseSelect = controlsRoot.querySelector("#noise-level");
   const runButton = controlsRoot.querySelector("#run-event");
   const resetButton = controlsRoot.querySelector("#reset-event");
   const revealButton = controlsRoot.querySelector("#reveal-truth");
-  const exportPdfButton = controlsRoot.querySelector("#export-pdf");
+  const exportAsSelect = controlsRoot.querySelector("#export-as");
   const resetViewButton = controlsRoot.querySelector("#reset-view");
+  const buildDetectorButton = controlsRoot.querySelector("#build-detector");
+  const buildDetectorPanel = controlsRoot.querySelector("#build-detector-panel");
+  const buildDetectorExplanation = controlsRoot.querySelector("#build-detector-explanation");
+  const buildNextButton = controlsRoot.querySelector("#build-next");
+  const showAllDetectorButton = controlsRoot.querySelector("#show-all-detector");
+  const resetBuildButton = controlsRoot.querySelector("#reset-build");
   const setDefaultViewButton = controlsRoot.querySelector("#set-default-view");
   const copyCameraJsonButton = controlsRoot.querySelector("#copy-camera-json");
   const guessSignalButton = controlsRoot.querySelector("#guess-signal");
@@ -127,12 +176,53 @@ export function initUI({ statusText, sceneDisplay, eventDisplay2D, setView }) {
   const neutronStepReadout = controlsRoot.querySelector("#neutron-step-readout");
   const neutronTimeReadout = controlsRoot.querySelector("#neutron-time-readout");
 
+  updateInteractionModeAvailability();
   renderNoEvent();
 
+
+  buildDetectorButton.addEventListener("click", () => {
+    buildDetectorPanel.hidden = false;
+    buildStepIndex = 0;
+    sceneDisplay.resetDetectorBuild();
+    buildDetectorExplanation.textContent = "Click a detector module or Build Next.";
+    statusText.textContent = "Build Detector mode started";
+  });
+
+  buildDetectorPanel.querySelectorAll("[data-build-module]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const module = buildModules.find((entry) => entry.id === button.dataset.buildModule);
+      if (!module) return;
+      sceneDisplay.setDetectorBuildVisibility(module.id, true);
+      buildDetectorExplanation.textContent = module.text;
+      buildStepIndex = Math.max(buildStepIndex, buildModules.findIndex((entry) => entry.id === module.id) + 1);
+    });
+  });
+
+  buildNextButton.addEventListener("click", () => {
+    const module = buildModules[buildStepIndex % buildModules.length];
+    sceneDisplay.setDetectorBuildVisibility(module.id, true);
+    buildDetectorExplanation.textContent = module.text;
+    buildStepIndex = Math.min(buildStepIndex + 1, buildModules.length);
+  });
+
+  showAllDetectorButton.addEventListener("click", () => {
+    sceneDisplay.showAllDetectorModules();
+    buildStepIndex = buildModules.length;
+    buildDetectorExplanation.textContent = "All detector modules are visible.";
+    statusText.textContent = "Detector build complete";
+  });
+
+  resetBuildButton.addEventListener("click", () => {
+    sceneDisplay.resetDetectorBuild();
+    buildStepIndex = 0;
+    buildDetectorExplanation.textContent = "Click a detector module or Build Next.";
+    statusText.textContent = "Detector build reset";
+  });
   runButton.addEventListener("click", () => {
     currentEvent = generateEvent({
       neutrinoEnergy: energySelect.value === "random" ? "random" : Number(energySelect.value),
       eventType: eventTypeSelect.value,
+      interactionMode: isNeutrinoWaterEventSelected() ? interactionModeSelect.value : null,
       noiseLevel: noiseSelect.value,
       generateInFiducialVolume: generateFvToggle.checked,
     });
@@ -181,7 +271,8 @@ export function initUI({ statusText, sceneDisplay, eventDisplay2D, setView }) {
     showNeutronsToggle.disabled = currentMode !== "teacher";
     truthRoot.hidden = true;
     truthRoot.innerHTML = "";
-    renderNoEvent();
+    updateInteractionModeAvailability();
+  renderNoEvent();
     sceneDisplay.resetView();
     statusText.textContent = "Event reset and view restored";
   });
@@ -195,6 +286,8 @@ export function initUI({ statusText, sceneDisplay, eventDisplay2D, setView }) {
     eventDisplay2D.showEvent(currentEvent, { showTruth: true, timelineStep: currentTimelineStep });
     statusText.textContent = `Truth revealed: ${currentEvent.truth.eventType}`;
   });
+
+  eventTypeSelect.addEventListener("change", updateInteractionModeAvailability);
 
   guessSignalButton.addEventListener("click", () => scoreGuess("signal"));
   guessBackgroundButton.addEventListener("click", () => scoreGuess("background"));
@@ -295,16 +388,20 @@ export function initUI({ statusText, sceneDisplay, eventDisplay2D, setView }) {
     }
   });
 
-  exportPdfButton.addEventListener("click", () => {
-    const exported = exportCurrentViewToPdf({
+  exportAsSelect.addEventListener("change", async () => {
+    const format = exportAsSelect.value;
+    if (!format) return;
+    const exported = await exportCurrentView({
+      format,
       view: viewSelect.value,
       sceneDisplay,
       eventDisplay2D,
       event: currentEvent,
     });
     statusText.textContent = exported
-      ? "PDF export opened in print dialog"
-      : "PDF export was blocked by the browser";
+      ? `Exported current display as ${format.toUpperCase()}`
+      : "Export was blocked by the browser";
+    exportAsSelect.value = "";
   });
 
   showPmtHitsButton.addEventListener("click", () => {
@@ -320,6 +417,14 @@ export function initUI({ statusText, sceneDisplay, eventDisplay2D, setView }) {
     statusText.textContent = "PMT hit display reset";
   });
 
+
+  function isNeutrinoWaterEventSelected() {
+    return eventTypeSelect.value === "Neutrino-water interaction";
+  }
+
+  function updateInteractionModeAvailability() {
+    interactionModeSelect.disabled = !isNeutrinoWaterEventSelected();
+  }
 
   function updateTimelineDisplay() {
     updateTimelineReadout(currentEvent);
@@ -413,6 +518,10 @@ function renderObservables(event, mode = "student") {
       <dd>${isStudentMode ? "Unknown Event" : event.truth.eventType}</dd>
       <dt>Signal/background</dt>
       <dd>${isStudentMode ? "Hidden" : capitalize(event.challenge.classification)}</dd>
+      <dt>Interaction Mode</dt>
+      <dd>${isStudentMode ? "Hidden" : event.truth.interactionMode ?? "None"}</dd>
+      <dt>${secondaryTrackSummaryLabel(event.truth.interactionMode)}</dt>
+      <dd>${isStudentMode ? "Hidden" : event.truth.secondaryTracks?.length ?? 0}</dd>
       <dt>FMV hits</dt>
       <dd>${event.observables.fmvHitCount}</dd>
       <dt>PMT hits</dt>
@@ -442,8 +551,15 @@ function renderObservables(event, mode = "student") {
       <dt>Noise level</dt>
       <dd>${capitalize(event.observables.noiseLevel)}</dd>
     </dl>
+    <p class="control-note">Toy model: RES and DIS modes add pion/hadron-like tracks and more delayed neutrons. This is for visualization only.</p>
     <p class="control-note">Toy model: neutron multiplicity increases with neutrino energy and inelasticity. Zero-neutron events are possible.</p>
   `;
+}
+
+function secondaryTrackSummaryLabel(interactionMode) {
+  if (interactionMode === "RES") return "Pion-like track";
+  if (interactionMode === "DIS") return "Hadron-like tracks";
+  return "Secondary tracks";
 }
 
 function renderTruth(event) {
@@ -458,6 +574,10 @@ function renderTruth(event) {
       <dd>${capitalize(event.challenge.classification)}</dd>
       <dt>True neutrino energy</dt>
       <dd>${hasNeutrinoEnergy ? `${truth.neutrinoEnergyGeV.toFixed(1)} GeV` : "None"}</dd>
+      <dt>Interaction Mode</dt>
+      <dd>${truth.interactionMode ?? "None"}</dd>
+      <dt>${secondaryTrackSummaryLabel(truth.interactionMode)}</dt>
+      <dd>${truth.secondaryTracks?.length ?? 0}</dd>
       <dt>True interaction vertex</dt>
       <dd>${truth.vertexMeters ? "Inside water" : truth.hiddenDirtVertexMeters ? "Upstream dirt, hidden in 3D" : "None"}</dd>
       <dt>True muon energy</dt>
@@ -506,6 +626,16 @@ function formatNeutronTruth(neutrons = []) {
 function capitalize(text) {
   return text.charAt(0).toUpperCase() + text.slice(1);
 }
+
+
+
+
+
+
+
+
+
+
 
 
 

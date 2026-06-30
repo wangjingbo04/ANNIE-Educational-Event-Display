@@ -195,6 +195,19 @@ export function initScene({ container, onReady }) {
     clearEvent: eventDisplay.clearEvent,
     resetDetectorHits: eventDisplay.resetDetectorHits,
     setFiducialVolumeVisible: (visible) => { detectorModel.fiducialVolume.visible = visible; },
+    setDetectorBuildVisibility: (moduleId, visible) => {
+      setDetectorBuildVisibility(detectorModel.buildGroups, moduleId, visible);
+      if (moduleId === "fiducialVolume") detectorModel.fiducialVolume.visible = visible;
+      if (moduleId === "gdWater") detectorModel.buildGroups.waterTank.visible = visible;
+    },
+    resetDetectorBuild: () => {
+      resetDetectorBuild(detectorModel.buildGroups);
+      detectorModel.fiducialVolume.visible = false;
+    },
+    showAllDetectorModules: () => {
+      showAllDetectorModules(detectorModel.buildGroups);
+      detectorModel.fiducialVolume.visible = true;
+    },
     setCherenkovConeVisible: eventDisplay.setCherenkovConeVisible,
     setNeutronTimelineStep: eventDisplay.setNeutronTimelineStep,
     showDetectorHits: eventDisplay.showDetectorHits,
@@ -324,21 +337,62 @@ function addDetectorModel(scene) {
   const mrdLayers = [];
   const fmvLayers = { front: [] };
   const pmtMeshes = new Map();
+  const buildGroups = {
+    waterTank: new THREE.Group(),
+    pmts: new THREE.Group(),
+    fmv: new THREE.Group(),
+    mrd: new THREE.Group(),
+    gdWater: new THREE.Group(),
+    fiducialVolume: new THREE.Group(),
+  };
 
-  addWaterTank(group);
-  addCapSupportArrays(group);
-  addWallPmtSupportFrames(group);
-  addPmts(group, pmtMeshes);
-  addFrontVeto(group, fmvLayers);
-  addMrd(group, mrdLayers);
-  const fiducialVolume = addFiducialVolume(group);
+  buildGroups.waterTank.name = "waterTankGroup";
+  buildGroups.pmts.name = "pmtGroup";
+  buildGroups.fmv.name = "fmvGroup";
+  buildGroups.mrd.name = "mrdGroup";
+  buildGroups.gdWater.name = "gdWaterGroup";
+  buildGroups.fiducialVolume.name = "fiducialVolumeGroup";
+
+  addWaterTank(buildGroups.waterTank);
+  addCapSupportArrays(buildGroups.pmts);
+  addWallPmtSupportFrames(buildGroups.pmts);
+  addPmts(buildGroups.pmts, pmtMeshes);
+  addFrontVeto(buildGroups.fmv, fmvLayers);
+  addMrd(buildGroups.mrd, mrdLayers);
+  const fiducialVolume = addFiducialVolume(buildGroups.fiducialVolume);
+
+  group.add(buildGroups.waterTank);
+  group.add(buildGroups.pmts);
+  group.add(buildGroups.fmv);
+  group.add(buildGroups.mrd);
+  group.add(buildGroups.gdWater);
+  group.add(buildGroups.fiducialVolume);
   addDetectorAxes(group);
 
   scene.add(group);
 
-  return { mrdLayers, fmvLayers, pmtMeshes, fiducialVolume };
+  return { mrdLayers, fmvLayers, pmtMeshes, fiducialVolume, buildGroups };
 }
 
+
+function setDetectorBuildVisibility(buildGroups, moduleId, visible) {
+  const group = buildGroups[moduleId];
+  if (group) {
+    group.visible = visible;
+  }
+}
+
+function resetDetectorBuild(buildGroups) {
+  for (const group of Object.values(buildGroups)) {
+    group.visible = false;
+  }
+}
+
+function showAllDetectorModules(buildGroups) {
+  for (const group of Object.values(buildGroups)) {
+    group.visible = true;
+  }
+}
 function addWaterTank(group) {
   const { radius, bodyRadius, baseRadius, height, center } = DETECTOR.tank;
   const waterGeometry = new THREE.CylinderGeometry(radius, radius, height, 96, 1, false);
@@ -891,6 +945,10 @@ function resizeRenderer(container, camera, renderer) {
   camera.updateProjectionMatrix();
   renderer.setSize(width, height, false);
 }
+
+
+
+
 
 
 

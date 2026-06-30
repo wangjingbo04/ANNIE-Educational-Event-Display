@@ -3,9 +3,10 @@ import { calculateRayCylinderIntersection } from "./cherenkov.js";
 import { detectorGeometry } from "./scene.js";
 
 const ENERGY_OPTIONS = [0.6, 0.8, 1.0, 1.5, 2.0];
-const EVENT_TYPES = ["Water CCQE (signal)", "Dirt interaction", "Cosmic muon", "Random"];
+const WATER_EVENT_TYPE = "Neutrino-water interaction";
+const EVENT_TYPES = [WATER_EVENT_TYPE, "Dirt interaction", "Cosmic muon", "Random"];
 const NOISE_LEVELS = ["low", "medium", "high"];
-const REAL_EVENT_TYPES = ["Water CCQE (signal)", "Dirt interaction", "Cosmic muon"];
+const REAL_EVENT_TYPES = [WATER_EVENT_TYPE, "Dirt interaction", "Cosmic muon"];
 const CCQE_MUON_ENERGY_FRACTION = [0.65, 0.9];
 const FIDUCIAL_RADIUS_METERS = 1.0;
 const FIDUCIAL_LOCAL_Y_MIN_METERS = -0.5;
@@ -27,7 +28,7 @@ export function getEventOptions() {
   };
 }
 
-export function generateEvent({ neutrinoEnergy, eventType, noiseLevel, generateInFiducialVolume = false }) {
+export function generateEvent({ neutrinoEnergy, eventType, noiseLevel, generateInFiducialVolume = false, interactionMode = "CCQE" }) {
   const resolvedEnergy = neutrinoEnergy === "random" ? choose(ENERGY_OPTIONS) : neutrinoEnergy;
   const resolvedType = eventType === "Random" ? choose(REAL_EVENT_TYPES) : eventType;
 
@@ -39,10 +40,21 @@ export function generateEvent({ neutrinoEnergy, eventType, noiseLevel, generateI
     return generateCosmicEvent({ noiseLevel, requestedEventType: eventType });
   }
 
-  return generateWaterCcqeEvent({ neutrinoEnergy: resolvedEnergy, noiseLevel, requestedEventType: eventType, generateInFiducialVolume });
+  const resolvedInteractionMode = resolveInteractionMode(eventType === WATER_EVENT_TYPE ? interactionMode : "Random");
+  return generateWaterCcqeEvent({ neutrinoEnergy: resolvedEnergy, noiseLevel, requestedEventType: eventType, generateInFiducialVolume, interactionMode: resolvedInteractionMode });
 }
 
-function generateWaterCcqeEvent({ neutrinoEnergy, noiseLevel, requestedEventType, generateInFiducialVolume }) {
+function resolveInteractionMode(interactionMode) {
+  if (interactionMode === "RES" || interactionMode === "DIS" || interactionMode === "CCQE") {
+    return interactionMode;
+  }
+  const roll = Math.random();
+  if (roll < 0.6) return "CCQE";
+  if (roll < 0.9) return "RES";
+  return "DIS";
+}
+
+function generateWaterCcqeEvent({ neutrinoEnergy, noiseLevel, requestedEventType, generateInFiducialVolume, interactionMode }) {
   const vertex = generateInFiducialVolume ? generateVertexInFiducialVolume() : randomVertexInTank();
   if (generateInFiducialVolume && !isInsideFiducialVolume(vertex)) {
     console.warn("Generated water neutrino vertex failed fiducial-volume check", vertex);
@@ -54,12 +66,14 @@ function generateWaterCcqeEvent({ neutrinoEnergy, noiseLevel, requestedEventType
   const waterTrackLength = waterExit.distance;
   const waterExitPoint = waterExit.point;
   const mrd = estimateMrdSegment(waterExitPoint, muonDirection, muonEnergy, waterTrackLength);
-  const neutrons = generateDelayedNeutrons(vertex, neutrinoEnergy, 'CCQE-like');
+  const secondaryTracks = generateSecondaryTracks(vertex, muonDirection, interactionMode);
+  const neutronModel = interactionMode === "RES" ? "Resonance-like" : interactionMode === "DIS" ? "DIS-like" : "CCQE-like";
+  const neutrons = generateDelayedNeutrons(vertex, neutrinoEnergy, neutronModel);
 
   return buildEvent({
     category: "water-ccqe",
     classification: "signal",
-    eventType: "Water CCQE",
+    eventType: WATER_EVENT_TYPE,
     requestedEventType,
     neutrinoEnergy,
     noiseLevel,
@@ -73,7 +87,9 @@ function generateWaterCcqeEvent({ neutrinoEnergy, noiseLevel, requestedEventType
     mrd,
     neutronMultiplicity: neutrons.length,
     neutrons,
-    visibleTopology: "contained water vertex with single downstream muon",
+    interactionMode,
+    secondaryTracks,
+    visibleTopology: interactionMode === "CCQE" ? "contained water vertex with single downstream muon" : `${interactionMode} water vertex with muon plus ${secondaryTracks.length} secondary track(s)`,
     fmvHits: [],
     display: {
       incomingNeutrino: {
@@ -177,6 +193,8 @@ function buildEvent({
   mrd,
   neutronMultiplicity,
   neutrons = [],
+  interactionMode = null,
+  secondaryTracks = [],
   visibleTopology,
   fmvHits,
   display,
@@ -213,6 +231,8 @@ function buildEvent({
       mrdStopped: mrd.stopped,
       neutronMultiplicity,
       neutrons,
+      interactionMode,
+      secondaryTracks,
       fmvHitCount: fmvHits.length,
       insideFiducialVolume: vertex ? isInsideFiducialVolume(vertex) : false,
     },
@@ -246,6 +266,7 @@ function buildEvent({
         start: vectorToArray(mrd.start),
         end: vectorToArray(mrd.end),
       } : null,
+      secondaryTracks,
     },
   };
 }
@@ -343,6 +364,46 @@ function sampleCosmicMuonDirection() {
   ).normalize();
 }
 
+
+function generateSecondaryTracks(vertex, muonDirection, interactionMode) {
+  if (interactionMode === "RES") {
+    return [createSecondaryTrack(vertex, muonDirection, "pion", 0xff4fd8, randomBetween(0.4, 1.0), 0, randomBetween(30, 90))];
+  }
+  if (interactionMode === "DIS") {
+    const count = randomInteger(3, 6);
+    const colors = [0xffd23f, 0xff8a00, 0xff4fd8, 0xc77dff, 0xff5c33, 0xffee66];
+    return Array.from({ length: count }, (_, index) => createSecondaryTrack(
+      vertex,
+      muonDirection,
+      "hadron",
+      colors[index % colors.length],
+      randomBetween(0.2, 0.8),
+      index,
+      randomBetween(35, 115),
+    ));
+  }
+  return [];
+}
+
+function createSecondaryTrack(vertex, muonDirection, type, color, lengthMeters, index, angleDegrees) {
+  const angle = THREE.MathUtils.degToRad(angleDegrees);
+  const reference = Math.abs(muonDirection.y) < 0.85 ? new THREE.Vector3(0, 1, 0) : new THREE.Vector3(1, 0, 0);
+  const sideA = new THREE.Vector3().crossVectors(muonDirection, reference).normalize();
+  const sideB = new THREE.Vector3().crossVectors(muonDirection, sideA).normalize();
+  const phi = randomBetween(0, Math.PI * 2) + index * 1.35;
+  const transverse = sideA.multiplyScalar(Math.cos(phi)).add(sideB.multiplyScalar(Math.sin(phi))).normalize();
+  const direction = muonDirection.clone().multiplyScalar(Math.cos(angle)).add(transverse.multiplyScalar(Math.sin(angle))).normalize();
+  const rawEnd = vertex.clone().add(direction.clone().multiplyScalar(lengthMeters));
+  const end = clampPointInsideTank(rawEnd);
+  return {
+    type,
+    startPosition: vectorToArray(vertex),
+    endPosition: vectorToArray(end),
+    direction: vectorToArray(direction),
+    lengthMeters: round(vertex.distanceTo(end), 3),
+    color,
+  };
+}
 function generateDelayedNeutrons(vertex, neutrinoEnergy, interactionModel) {
   const count = sampleNeutronMultiplicity(neutrinoEnergy, interactionModel);
   return Array.from({ length: count }, (_, index) => {
@@ -386,7 +447,7 @@ function sampleNeutronMultiplicity(neutrinoEnergy, interactionModel) {
     maxCount = 8;
   } else if (interactionModel === "DIS-like") {
     lambda = 2.0 + 0.8 * neutrinoEnergy;
-    maxCount = 8;
+    maxCount = 10;
   } else {
     maxCount = 5;
     if (neutrinoEnergy <= 0.6) {
@@ -689,6 +750,12 @@ function createEventId() {
 
   return `event-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
+
+
+
+
+
+
 
 
 
